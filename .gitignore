@@ -1,0 +1,50 @@
+## --- Visual Studio & Build Outputs ---
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Log]s/
+[Log]g/
+
+## --- User-specific files (Layouts, configurations) ---
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.userprefs
+
+## --- Visual Studio 2015/2017/2019/2022 Cache & Settings ---
+.vs/
+.vscode/
+# Comment out the line below if you want to share VS Code launch settings
+.vscode/launch.json
+
+## --- Rider / JetBrains Cache (If using alternative IDEs) ---
+.idea/
+*.sln.iml
+
+## --- NuGet Packages ---
+*.nupkg
+**/packages/*
+# Don't ignore NuGet package restore targets
+!**/packages/build/
+
+## --- Test Results and Code Coverage ---
+[Tt]est[Rr]esult*/
+*.codecoverage
+*.coverage
+
+## --- Output Files ---
+*.exe
+*.dll
+*.pdb
+*.msi
+*.msm
+
+## --- Operating System Files ---
+.DS_Store
+Thumbs.db
