@@ -17,14 +17,16 @@ public sealed class ExportSettingsDialog : Form
     private readonly RadioButton _modeFrameOffset;
     private readonly RadioButton _modeCalibOffset;
     private readonly CheckBox _fovCenterNeedle;
-    private readonly CheckBox _fixedCameraInversion;
+    private readonly RadioButton _rotationNone;
+    private readonly RadioButton _rotation90;
+    private readonly RadioButton _rotation180;
     private readonly CheckBox _useNeedleOffset;
     private readonly NumericUpDown _needleX;
     private readonly NumericUpDown _needleY;
     private readonly NumericUpDown _needleR;
     private readonly Label _calibrationInfo;
     private TableLayoutPanel? _root;
-    private GroupBox? _coordinateGroup;
+    private readonly List<GroupBox> _sectionGroups = new();
 
     public ProcessDefaults Result { get; private set; } = new();
 
@@ -61,12 +63,25 @@ public sealed class ExportSettingsDialog : Form
             Margin = new Padding(0, 4, 0, 0)
         };
 
-        _fixedCameraInversion = new CheckBox
+        _rotationNone = new RadioButton
         {
-            Text = "Fixed camera inversion (+180 deg local to sensor)",
+            Text = "None",
             AutoSize = true,
-            MaximumSize = new Size(ContentWidth - 8, 0),
-            Margin = new Padding(0, 4, 0, 0)
+            Margin = new Padding(0, 0, 24, 0)
+        };
+
+        _rotation90 = new RadioButton
+        {
+            Text = "90 Degree",
+            AutoSize = true,
+            Margin = new Padding(0, 0, 24, 0)
+        };
+
+        _rotation180 = new RadioButton
+        {
+            Text = "180 Degree",
+            AutoSize = true,
+            Margin = new Padding(0)
         };
 
         _useNeedleOffset = new CheckBox
@@ -81,7 +96,8 @@ public sealed class ExportSettingsDialog : Form
         _needleY = CreateNumeric(-5000, 5000, 0.001m, 3);
         _needleR = CreateNumeric(-360, 360, 0.1m, 2);
 
-        _calibrationInfo = HintLabel(string.Empty, ContentWidth - 20);
+        _calibrationInfo = HintLabel(string.Empty, ContentWidth - 48);
+        _calibrationInfo.Margin = new Padding(0, 4, 0, 0);
 
         InitializeFormShell();
         BuildLayout();
@@ -113,7 +129,7 @@ public sealed class ExportSettingsDialog : Form
         }
 
         _fovCenterNeedle.Checked = current.UseFovCenterNeedleOffset;
-        _fixedCameraInversion.Checked = current.UseFixedCameraInversion;
+        SetLocalRotationSelection(current.LocalRotation);
         _useNeedleOffset.Checked = current.UseNeedleOffset;
         _needleX.Value = Clamp(_needleX, (decimal)current.NeedleOffsetX_mm);
         _needleY.Value = Clamp(_needleY, (decimal)current.NeedleOffsetY_mm);
@@ -160,59 +176,127 @@ public sealed class ExportSettingsDialog : Form
         _root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _coordinateGroup = BuildCoordinateGroup();
-        _root.Controls.Add(_coordinateGroup, 0, 0);
+        var content = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            Dock = DockStyle.Top,
+            GrowStyle = TableLayoutPanelGrowStyle.AddRows
+        };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        AddSection(content, BuildModeGroup());
+        AddSection(content, BuildFovGroup());
+        AddSection(content, BuildAngleGroup());
+        AddSection(content, BuildNeedleGroup());
+        content.Controls.Add(_calibrationInfo);
+
+        _root.Controls.Add(content, 0, 0);
         _root.Controls.Add(BuildBottomPanel(), 0, 1);
 
         Controls.Add(_root);
     }
 
-    private GroupBox BuildCoordinateGroup()
+    private void AddSection(TableLayoutPanel parent, GroupBox group)
+    {
+        _sectionGroups.Add(group);
+        parent.Controls.Add(group);
+        parent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    }
+
+    private GroupBox BuildModeGroup()
+    {
+        var layout = CreateSectionLayout(6);
+        int row = 0;
+        layout.Controls.Add(_modeAbsolute, 0, row++);
+        layout.Controls.Add(HintLabel(
+            "Export XY = absolute UFRAME mm after FOV and needle corrections.",
+            ContentWidth - 48), 0, row++);
+        layout.Controls.Add(_modeFrameOffset, 0, row++);
+        layout.Controls.Add(HintLabel(
+            "Export XY = robot mm delta from the taught Frame origin (local 0,0).",
+            ContentWidth - 48), 0, row++);
+        layout.Controls.Add(_modeCalibOffset, 0, row++);
+        layout.Controls.Add(HintLabel(
+            "Export XY = robot mm delta from calibration ReferenceRobot. Dispense: CrossCalibRef + Export.",
+            ContentWidth - 48), 0, row);
+
+        return WrapGroupBox("UFRAME / UTOOL and offsets", layout);
+    }
+
+    private GroupBox BuildFovGroup()
+    {
+        var layout = CreateSectionLayout(2);
+        layout.Controls.Add(_fovCenterNeedle, 0, 0);
+        layout.Controls.Add(HintLabel(
+            "Shift export so the needle at FOV center sits over the taught point (ref pixel to FOV center).",
+            ContentWidth - 48), 0, 1);
+
+        return WrapGroupBox("FOV center correction", layout);
+    }
+
+    private GroupBox BuildAngleGroup()
+    {
+        var layout = CreateSectionLayout(3);
+
+        var rotationPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3,
+            RowCount = 1,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0)
+        };
+        rotationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rotationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rotationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rotationPanel.Controls.Add(_rotationNone, 0, 0);
+        rotationPanel.Controls.Add(_rotation90, 1, 0);
+        rotationPanel.Controls.Add(_rotation180, 2, 0);
+
+        layout.Controls.Add(rotationPanel, 0, 0);
+        layout.Controls.Add(HintLabel(
+            "Rotate exported XY coordinates CCW after the coordinate mode is applied. Same rotation for absolute and offset modes.",
+            ContentWidth - 48), 0, 1);
+        layout.Controls.Add(HintLabel(
+            "180 deg replaces the former fixed-camera inversion. Does not change sensor px or export R.",
+            ContentWidth - 48), 0, 2);
+
+        return WrapGroupBox("Angle", layout);
+    }
+
+    private GroupBox BuildNeedleGroup()
+    {
+        var layout = CreateSectionLayout(3);
+        layout.Controls.Add(_useNeedleOffset, 0, 0);
+        layout.Controls.Add(BuildNeedleOffsetPanel(), 0, 1);
+        layout.Controls.Add(HintLabel(
+            "When enabled, needle offset is included in every export value. Do not add it again on the robot.",
+            ContentWidth - 48), 0, 2);
+
+        return WrapGroupBox("Needle offset", layout);
+    }
+
+    private static TableLayoutPanel CreateSectionLayout(int rowCount)
     {
         var layout = new TableLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 14,
+            RowCount = rowCount,
             Dock = DockStyle.Top,
             GrowStyle = TableLayoutPanelGrowStyle.AddRows
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        for (int i = 0; i < 14; i++)
+        for (int i = 0; i < rowCount; i++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
 
-        int row = 0;
-        layout.Controls.Add(_modeAbsolute, 0, row++);
-        layout.Controls.Add(HintLabel(
-            "Export XY = absolute UFRAME mm after FOV and needle corrections.",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_modeFrameOffset, 0, row++);
-        layout.Controls.Add(HintLabel(
-            "Export XY = robot mm delta from the taught Frame origin (local 0,0).",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_modeCalibOffset, 0, row++);
-        layout.Controls.Add(HintLabel(
-            "Export XY = robot mm delta from calibration ReferenceRobot. Dispense: CrossCalibRef + Export.",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_fovCenterNeedle, 0, row++);
-        layout.Controls.Add(HintLabel(
-            "Shift export so the needle at FOV center sits over the taught point (ref pixel to FOV center).",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_fixedCameraInversion, 0, row++);
-        layout.Controls.Add(HintLabel(
-            "Use when the camera and needle are fixed and the robot moves the part under them.",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_useNeedleOffset, 0, row++);
-        layout.Controls.Add(BuildNeedleOffsetPanel(), 0, row++);
-        layout.Controls.Add(HintLabel(
-            "When enabled, needle offset is included in every export value. Do not add it again on the robot.",
-            ContentWidth - 32), 0, row++);
-        layout.Controls.Add(_calibrationInfo, 0, row);
-
-        return WrapGroupBox("Waypoint coordinates (XY)", layout);
+        return layout;
     }
 
     private Control BuildNeedleOffsetPanel()
@@ -223,8 +307,11 @@ public sealed class ExportSettingsDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = 3,
-            Margin = new Padding(24, 0, 0, 0)
+            Margin = new Padding(12, 4, 0, 0),
+            Dock = DockStyle.Top
         };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layout.Controls.Add(new Label { Text = "Needle X mm", AutoSize = true }, 0, 0);
         layout.Controls.Add(_needleX, 1, 0);
         layout.Controls.Add(new Label { Text = "Needle Y mm", AutoSize = true }, 0, 1);
@@ -286,14 +373,16 @@ public sealed class ExportSettingsDialog : Form
         var group = new GroupBox
         {
             Text = title,
-            Padding = new Padding(10, 8, 10, 12),
-            Margin = new Padding(0, 0, 0, 8),
+            Padding = new Padding(12, 10, 12, 12),
+            Margin = new Padding(0, 0, 0, 10),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Dock = DockStyle.Top
+            Dock = DockStyle.Top,
+            MinimumSize = new Size(ContentWidth - DialogPadding * 2, 0)
         };
 
         content.Dock = DockStyle.Top;
+        content.Margin = new Padding(0);
         group.Controls.Add(content);
         return group;
     }
@@ -304,11 +393,13 @@ public sealed class ExportSettingsDialog : Form
 
         int innerWidth = ClientSize.Width - _root!.Padding.Horizontal;
 
-        if (_coordinateGroup != null)
+        foreach (GroupBox group in _sectionGroups)
         {
-            _coordinateGroup.Width = innerWidth;
-            FitGroupBox(_coordinateGroup, innerWidth);
+            group.Width = innerWidth;
+            FitGroupBox(group, innerWidth);
         }
+
+        _calibrationInfo.MaximumSize = new Size(innerWidth - 8, 0);
 
         _root.Width = ClientSize.Width;
         _root.PerformLayout();
@@ -356,7 +447,7 @@ public sealed class ExportSettingsDialog : Form
             GlueOn = _sourceDefaults.GlueOn,
             CoordinateMode = mode,
             UseFovCenterNeedleOffset = _fovCenterNeedle.Checked,
-            UseFixedCameraInversion = _fixedCameraInversion.Checked,
+            LocalRotation = ReadLocalRotationSelection(),
             UseNeedleOffset = _useNeedleOffset.Checked,
             NeedleOffsetX_mm = (double)_needleX.Value,
             NeedleOffsetY_mm = (double)_needleY.Value,
@@ -389,6 +480,37 @@ public sealed class ExportSettingsDialog : Form
             fixedPose;
     }
 
+    private void SetLocalRotationSelection(ExportLocalRotation rotation)
+    {
+        switch (rotation)
+        {
+            case ExportLocalRotation.Degree90:
+                _rotation90.Checked = true;
+                break;
+            case ExportLocalRotation.Degree180:
+                _rotation180.Checked = true;
+                break;
+            default:
+                _rotationNone.Checked = true;
+                break;
+        }
+    }
+
+    private ExportLocalRotation ReadLocalRotationSelection()
+    {
+        if (_rotation90.Checked)
+        {
+            return ExportLocalRotation.Degree90;
+        }
+
+        if (_rotation180.Checked)
+        {
+            return ExportLocalRotation.Degree180;
+        }
+
+        return ExportLocalRotation.None;
+    }
+
     private void SetNeedleEditorsEnabled(bool enabled)
     {
         _needleX.Enabled = enabled;
@@ -416,7 +538,8 @@ public sealed class ExportSettingsDialog : Form
             ForeColor = SystemColors.GrayText,
             AutoSize = true,
             MaximumSize = new Size(width, 0),
-            Margin = new Padding(12, 0, 0, 8),
-            UseMnemonic = false
+            Margin = new Padding(0, 0, 0, 6),
+            UseMnemonic = false,
+            Dock = DockStyle.Top
         };
 }

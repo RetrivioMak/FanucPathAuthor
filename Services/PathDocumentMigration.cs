@@ -12,6 +12,6 @@ public static class PathDocumentMigration
         }
 
         document.SchemaVersion = 3;
-        document.Defaults.UseFixedCameraInversion = true;
+        document.Defaults.LocalRotation = ExportLocalRotation.Degree180;
     }
 }

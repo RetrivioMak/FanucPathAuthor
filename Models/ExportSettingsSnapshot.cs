@@ -5,10 +5,10 @@ namespace FanucPathAuthor.Models;
 /// </summary>
 public sealed class ExportSettingsSnapshot
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public ExportCoordinateMode CoordinateMode { get; set; } = ExportCoordinateMode.OffsetFromCalibrationRef;
     public bool UseFovCenterNeedleOffset { get; set; }
-    public bool UseFixedCameraInversion { get; set; } = true;
+    public ExportLocalRotation LocalRotation { get; set; } = ExportLocalRotation.Degree180;
     public bool UseNeedleOffset { get; set; }
     public double NeedleOffsetX_mm { get; set; }
     public double NeedleOffsetY_mm { get; set; }
@@ -19,7 +19,7 @@ public sealed class ExportSettingsSnapshot
         {
             CoordinateMode = defaults.CoordinateMode,
             UseFovCenterNeedleOffset = defaults.UseFovCenterNeedleOffset,
-            UseFixedCameraInversion = defaults.UseFixedCameraInversion,
+            LocalRotation = defaults.LocalRotation,
             UseNeedleOffset = defaults.UseNeedleOffset,
             NeedleOffsetX_mm = defaults.NeedleOffsetX_mm,
             NeedleOffsetY_mm = defaults.NeedleOffsetY_mm,
@@ -30,7 +30,7 @@ public sealed class ExportSettingsSnapshot
     {
         defaults.CoordinateMode = CoordinateMode;
         defaults.UseFovCenterNeedleOffset = UseFovCenterNeedleOffset;
-        defaults.UseFixedCameraInversion = UseFixedCameraInversion;
+        defaults.LocalRotation = LocalRotation;
         defaults.UseNeedleOffset = UseNeedleOffset;
         defaults.NeedleOffsetX_mm = NeedleOffsetX_mm;
         defaults.NeedleOffsetY_mm = NeedleOffsetY_mm;

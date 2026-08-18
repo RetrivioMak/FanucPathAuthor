@@ -815,7 +815,7 @@ public sealed class MainForm : Form
         target.GlueOn = defaults.GlueOn;
         target.CoordinateMode = defaults.CoordinateMode;
         target.UseFovCenterNeedleOffset = defaults.UseFovCenterNeedleOffset;
-        target.UseFixedCameraInversion = defaults.UseFixedCameraInversion;
+        target.LocalRotation = defaults.LocalRotation;
         target.UseNeedleOffset = defaults.UseNeedleOffset;
         target.NeedleOffsetX_mm = defaults.NeedleOffsetX_mm;
         target.NeedleOffsetY_mm = defaults.NeedleOffsetY_mm;
@@ -960,7 +960,7 @@ public sealed class MainForm : Form
         ProcessDefaults defaults = _canvas.Document.Defaults;
         string mode = WaypointExportService.DescribeExportMode(defaults.CoordinateMode);
         string fov = defaults.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
-        string camera = defaults.UseFixedCameraInversion ? "Fixed camera ON" : "Fixed camera OFF";
+        string camera = WaypointExportService.DescribeLocalRotation(defaults.LocalRotation);
         string needle = defaults.UseNeedleOffset
             ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
             : "Needle OFF";

@@ -11,8 +11,24 @@ public readonly record struct WaypointExportValues(
 
 public static class WaypointExportService
 {
-    public static double GetEffectiveExportAngleDeg(FrameDefinition frame, ProcessDefaults defaults) =>
-        frame.AngleDeg + (defaults.UseFixedCameraInversion ? 180.0 : 0.0);
+    public static (double X, double Y) ApplyExportPlaneRotation(
+        double exportX,
+        double exportY,
+        ExportLocalRotation rotation) =>
+        rotation switch
+        {
+            ExportLocalRotation.Degree90 => (-exportY, exportX),
+            ExportLocalRotation.Degree180 => (-exportX, -exportY),
+            _ => (exportX, exportY)
+        };
+
+    public static string DescribeLocalRotation(ExportLocalRotation rotation) =>
+        rotation switch
+        {
+            ExportLocalRotation.Degree90 => "Export rot 90°",
+            ExportLocalRotation.Degree180 => "Export rot 180°",
+            _ => "Export rot none"
+        };
 
     public static WaypointExportValues ComputeExportValues(
         double localX,
@@ -24,7 +40,7 @@ public static class WaypointExportService
         PixelToRobotCoeffs coeffs = calibration.PixelToRobot
             ?? throw new InvalidOperationException("Calibration has no pixelToRobot coefficients.");
 
-        double angleDeg = GetEffectiveExportAngleDeg(frame, defaults);
+        double angleDeg = frame.AngleDeg;
         (double sensorX, double sensorY) = CoordinateTransform.LocalToSensor(localX, localY, frame, angleDeg);
         (double baseX, double baseY) = ComputeBaseRobotMm(sensorX, sensorY, calibration, defaults, coeffs);
         (double exportX, double exportY) = ApplyExportMode(
@@ -37,6 +53,8 @@ public static class WaypointExportService
             defaults,
             coeffs,
             angleDeg);
+
+        (exportX, exportY) = ApplyExportPlaneRotation(exportX, exportY, defaults.LocalRotation);
 
         double exportR = ResolveExportR_deg(calibration);
         if (defaults.UseNeedleOffset)

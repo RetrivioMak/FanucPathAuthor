@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace FanucPathAuthor.Models;
 
 public enum SegmentKind
@@ -26,6 +28,13 @@ public enum ExportCoordinateMode
     OffsetFromCalibrationRef
 }
 
+public enum ExportLocalRotation
+{
+    None,
+    Degree90,
+    Degree180
+}
+
 public sealed class ProcessDefaults
 {
     public double Z_mm { get; set; } = 0;
@@ -40,8 +49,15 @@ public sealed class ProcessDefaults
     /// <summary>Shift XY so export places the needle at FOV center over the point.</summary>
     public bool UseFovCenterNeedleOffset { get; set; }
 
-    /// <summary>Apply +180 deg when mapping local px to sensor px (fixed camera, moving part).</summary>
-    public bool UseFixedCameraInversion { get; set; } = true;
+    /// <summary>Rotate exported XY after coordinate mode (None / 90 deg CCW / 180 deg).</summary>
+    public ExportLocalRotation LocalRotation { get; set; } = ExportLocalRotation.Degree180;
+
+    [JsonIgnore]
+    public bool UseFixedCameraInversion
+    {
+        get => LocalRotation == ExportLocalRotation.Degree180;
+        set => LocalRotation = value ? ExportLocalRotation.Degree180 : ExportLocalRotation.None;
+    }
 
     public bool UseNeedleOffset { get; set; }
 

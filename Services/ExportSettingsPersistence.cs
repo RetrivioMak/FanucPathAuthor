@@ -6,7 +6,7 @@ namespace FanucPathAuthor.Services;
 
 public static class ExportSettingsPersistence
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -47,6 +47,7 @@ public static class ExportSettingsPersistence
             }
 
             string json = File.ReadAllText(path);
+            using JsonDocument document = JsonDocument.Parse(json);
             ExportSettingsSnapshot? snapshot =
                 JsonSerializer.Deserialize<ExportSettingsSnapshot>(json, JsonOptions);
             if (snapshot == null)
@@ -55,6 +56,7 @@ public static class ExportSettingsPersistence
             }
 
             snapshot.ApplyTo(defaults);
+            ExportSettingsLegacyMigration.ApplyLocalRotation(document.RootElement, defaults);
             return true;
         }
         catch

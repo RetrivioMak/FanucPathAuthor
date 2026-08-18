@@ -133,7 +133,7 @@ public static class GeometryHelper
         double exportX = double.NaN;
         double exportY = double.NaN;
         double exportR = double.NaN;
-        double angleDeg = WaypointExportService.GetEffectiveExportAngleDeg(document.Frame, document.Defaults);
+        double angleDeg = document.Frame.AngleDeg;
         (double sensorX, double sensorY) = CoordinateTransform.LocalToSensor(0, 0, document.Frame, angleDeg);
 
         if (calibration?.PixelToRobot != null)

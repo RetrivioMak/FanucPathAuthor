@@ -255,7 +255,7 @@ public class WaypointExportServiceTests
     private static ProcessDefaults AbsoluteDefaults => new()
     {
         CoordinateMode = ExportCoordinateMode.UframeAbsolute,
-        UseFixedCameraInversion = false
+        LocalRotation = ExportLocalRotation.None
     };
 
     [Fact]
@@ -282,7 +282,7 @@ public class WaypointExportServiceTests
         var defaults = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -304,7 +304,7 @@ public class WaypointExportServiceTests
         var defaults = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -327,7 +327,7 @@ public class WaypointExportServiceTests
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             UseFovCenterNeedleOffset = true,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -350,7 +350,7 @@ public class WaypointExportServiceTests
         {
             CoordinateMode = ExportCoordinateMode.UframeAbsolute,
             UseFovCenterNeedleOffset = true,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -372,7 +372,7 @@ public class WaypointExportServiceTests
         var defaults = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -397,7 +397,7 @@ public class WaypointExportServiceTests
             UseNeedleOffset = true,
             NeedleOffsetX_mm = 5,
             NeedleOffsetY_mm = -2,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -412,19 +412,19 @@ public class WaypointExportServiceTests
     }
 
     [Fact]
-    public void FixedCameraInversion_NegatesRobotDeltaComparedToNoInversion()
+    public void LocalRotation180_NegatesRobotDeltaComparedToNone()
     {
         var calibration = CreateCalibration();
         var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800 };
         var without = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
         var with = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-            UseFixedCameraInversion = true
+            LocalRotation = ExportLocalRotation.Degree180
         };
 
         WaypointExportValues normal = WaypointExportService.ComputeExportValues(50, 20, frame, calibration, without);
@@ -435,6 +435,63 @@ public class WaypointExportServiceTests
     }
 
     [Fact]
+    public void LocalRotation90_RotatesRobotDeltaComparedToNone()
+    {
+        var calibration = CreateCalibration();
+        var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800, AngleDeg = 0 };
+        var none = new ProcessDefaults
+        {
+            CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
+            LocalRotation = ExportLocalRotation.None
+        };
+        var rotated = new ProcessDefaults
+        {
+            CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
+            LocalRotation = ExportLocalRotation.Degree90
+        };
+
+        WaypointExportValues baseline = WaypointExportService.ComputeExportValues(100, 0, frame, calibration, none);
+        WaypointExportValues quarterTurn = WaypointExportService.ComputeExportValues(100, 0, frame, calibration, rotated);
+
+        Assert.Equal(-baseline.ExportY_mm, quarterTurn.ExportX_mm, 1);
+        Assert.Equal(baseline.ExportX_mm, quarterTurn.ExportY_mm, 1);
+    }
+
+    [Theory]
+    [InlineData(ExportCoordinateMode.UframeAbsolute)]
+    [InlineData(ExportCoordinateMode.OffsetFromFrameOrigin)]
+    [InlineData(ExportCoordinateMode.OffsetFromCalibrationRef)]
+    public void LocalRotation90_RotatesExportPlane_IndependentOfCoordinateMode(ExportCoordinateMode mode)
+    {
+        var calibration = CreateCalibration();
+        var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800, AngleDeg = 15 };
+        var none = new ProcessDefaults
+        {
+            CoordinateMode = mode,
+            LocalRotation = ExportLocalRotation.None
+        };
+        var rotated = new ProcessDefaults
+        {
+            CoordinateMode = mode,
+            LocalRotation = ExportLocalRotation.Degree90
+        };
+
+        WaypointExportValues baseline = WaypointExportService.ComputeExportValues(80, 30, frame, calibration, none);
+        WaypointExportValues quarterTurn = WaypointExportService.ComputeExportValues(80, 30, frame, calibration, rotated);
+
+        Assert.Equal(-baseline.ExportY_mm, quarterTurn.ExportX_mm, 1);
+        Assert.Equal(baseline.ExportX_mm, quarterTurn.ExportY_mm, 1);
+    }
+
+    [Fact]
+    public void ApplyExportPlaneRotation_FrameOrigin_StaysZero()
+    {
+        (double x, double y) = WaypointExportService.ApplyExportPlaneRotation(0, 0, ExportLocalRotation.Degree90);
+        Assert.Equal(0, x, 3);
+        Assert.Equal(0, y, 3);
+    }
+
+    [Fact]
     public void AnchorCapturePose_DoesNotAffectExport()
     {
         var calibration = CreateCalibration();
@@ -442,7 +499,7 @@ public class WaypointExportServiceTests
         var defaults = new ProcessDefaults
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-            UseFixedCameraInversion = false
+            LocalRotation = ExportLocalRotation.None
         };
 
         WaypointExportValues values = WaypointExportService.ComputeExportValues(
@@ -489,7 +546,7 @@ public class GeometryHelperTests
             Defaults = new ProcessDefaults
             {
                 CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
-                UseFixedCameraInversion = false
+                LocalRotation = ExportLocalRotation.None
             }
         };
         document.Segments.Add(new PathSegment
@@ -525,7 +582,7 @@ public class GeometryHelperTests
         {
             FrameIsDefined = true,
             Frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800 },
-            Defaults = new ProcessDefaults { UseFixedCameraInversion = false }
+            Defaults = new ProcessDefaults { LocalRotation = ExportLocalRotation.None }
         };
         document.Segments.Add(new PathSegment
         {
@@ -586,7 +643,7 @@ public class ExportSettingsPersistenceTests : IDisposable
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
             UseFovCenterNeedleOffset = true,
-            UseFixedCameraInversion = false,
+            LocalRotation = ExportLocalRotation.None,
             UseNeedleOffset = true,
             NeedleOffsetX_mm = 1.25,
             NeedleOffsetY_mm = -2.5,
@@ -599,11 +656,31 @@ public class ExportSettingsPersistenceTests : IDisposable
         Assert.True(ExportSettingsPersistence.TryLoadInto(loaded));
         Assert.Equal(source.CoordinateMode, loaded.CoordinateMode);
         Assert.Equal(source.UseFovCenterNeedleOffset, loaded.UseFovCenterNeedleOffset);
-        Assert.Equal(source.UseFixedCameraInversion, loaded.UseFixedCameraInversion);
+        Assert.Equal(source.LocalRotation, loaded.LocalRotation);
         Assert.Equal(source.UseNeedleOffset, loaded.UseNeedleOffset);
         Assert.Equal(source.NeedleOffsetX_mm, loaded.NeedleOffsetX_mm, 3);
         Assert.Equal(source.NeedleOffsetY_mm, loaded.NeedleOffsetY_mm, 3);
         Assert.Equal(source.NeedleOffsetR_deg, loaded.NeedleOffsetR_deg, 3);
+    }
+
+    [Fact]
+    public void TryLoadInto_MigratesLegacyUseFixedCameraInversionFlag()
+    {
+        string path = ExportSettingsPersistence.SettingsFilePath;
+        File.WriteAllText(
+            path,
+            """
+            {
+              "schemaVersion": 1,
+              "coordinateMode": "offsetFromCalibrationRef",
+              "useFixedCameraInversion": false,
+              "useNeedleOffset": false
+            }
+            """);
+
+        var loaded = new ProcessDefaults();
+        Assert.True(ExportSettingsPersistence.TryLoadInto(loaded));
+        Assert.Equal(ExportLocalRotation.None, loaded.LocalRotation);
     }
 }
 

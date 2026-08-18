@@ -15,7 +15,7 @@ public static class ProcessDefaultsCopy
             GlueOn = source.GlueOn,
             CoordinateMode = source.CoordinateMode,
             UseFovCenterNeedleOffset = source.UseFovCenterNeedleOffset,
-            UseFixedCameraInversion = source.UseFixedCameraInversion,
+            LocalRotation = source.LocalRotation,
             UseNeedleOffset = source.UseNeedleOffset,
             NeedleOffsetX_mm = source.NeedleOffsetX_mm,
             NeedleOffsetY_mm = source.NeedleOffsetY_mm,
