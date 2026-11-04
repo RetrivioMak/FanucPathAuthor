@@ -231,18 +231,13 @@ public sealed class PathCanvas : Control
 
         CommitUndoSnapshot();
 
-        var oldFrame = new FrameDefinition
-        {
-            OriginX_px = Document.Frame.OriginX_px,
-            OriginY_px = Document.Frame.OriginY_px,
-            AngleDeg = Document.Frame.AngleDeg
-        };
-
+        FrameDefinition oldFrame = Document.Frame.Clone();
         var newFrame = new FrameDefinition
         {
             OriginX_px = originX,
             OriginY_px = originY,
-            AngleDeg = angleDeg
+            AngleDeg = angleDeg,
+            InvertY = Document.Frame.InvertY
         };
 
         if (moveShapesWithFrame)
@@ -263,7 +258,8 @@ public sealed class PathCanvas : Control
         {
             OriginX_px = originX,
             OriginY_px = originY,
-            AngleDeg = angleDeg
+            AngleDeg = angleDeg,
+            InvertY = Document.Frame.InvertY
         };
         Invalidate();
     }
@@ -271,6 +267,42 @@ public sealed class PathCanvas : Control
     public void ClearDraftFrame()
     {
         DraftFrame = null;
+        Invalidate();
+    }
+
+    public void SetFrameInvertY(bool invertY)
+    {
+        if (Document.Frame.InvertY == invertY)
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        FrameDefinition oldFrame = Document.Frame.Clone();
+        FrameDefinition newFrame = oldFrame.Clone();
+        newFrame.InvertY = invertY;
+        FrameTransformHelper.RebindSegmentsToFrame(Document.Segments, oldFrame, newFrame);
+        for (int i = 0; i < _pendingPoints.Count; i++)
+        {
+            (double sensorX, double sensorY) = CoordinateTransform.LocalToSensor(
+                _pendingPoints[i].X,
+                _pendingPoints[i].Y,
+                oldFrame);
+            _pendingPoints[i] = CoordinateTransform.SensorToLocal(sensorX, sensorY, newFrame);
+        }
+
+        Document.Frame = newFrame;
+        if (DraftFrame != null)
+        {
+            DraftFrame.InvertY = invertY;
+        }
+
+        RaiseDocumentChanged();
+        StatusMessage?.Invoke(
+            this,
+            invertY
+                ? "Frame Y inverted to Fanuc. Path stayed on the image. Set export rotation to None."
+                : "Frame Y matches Open eVision. Export uses calibration axes.");
         Invalidate();
     }
 
@@ -328,12 +360,7 @@ public sealed class PathCanvas : Control
             ImagePath = Document.ImagePath,
             CalibrationPath = Document.CalibrationPath,
             ActiveTileId = Document.ActiveTileId,
-            Frame = new FrameDefinition
-            {
-                OriginX_px = Document.Frame.OriginX_px,
-                OriginY_px = Document.Frame.OriginY_px,
-                AngleDeg = Document.Frame.AngleDeg
-            },
+            Frame = Document.Frame.Clone(),
             FrameIsDefined = Document.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(Document.Defaults),
             Tiles = Document.Tiles.Select(DocumentClone.CloneTile).ToList(),
@@ -1180,10 +1207,10 @@ public sealed class PathCanvas : Control
     {
         var (originX, originY) = CoordinateTransform.LocalToSensor(0, 0, frame);
         PointF origin = ImageToScreen(originX, originY);
-        var (axisX, _) = CoordinateTransform.LocalToSensor(80, 0, frame);
-        var (_, axisY) = CoordinateTransform.LocalToSensor(0, 80, frame);
-        PointF xEnd = ImageToScreen(axisX, originY);
-        PointF yEnd = ImageToScreen(originX, axisY);
+        var (xSensorX, xSensorY) = CoordinateTransform.LocalToSensor(80, 0, frame);
+        var (ySensorX, ySensorY) = CoordinateTransform.LocalToSensor(0, 80, frame);
+        PointF xEnd = ImageToScreen(xSensorX, xSensorY);
+        PointF yEnd = ImageToScreen(ySensorX, ySensorY);
 
         using var pen = new Pen(color, 2);
         using var brush = new SolidBrush(color);
@@ -1191,6 +1218,8 @@ public sealed class PathCanvas : Control
         g.DrawLine(pen, origin, yEnd);
         g.FillEllipse(brush, origin.X - 4, origin.Y - 4, 8, 8);
         g.DrawString(label, Font, brush, origin.X + 6, origin.Y + 6);
+        g.DrawString("X", Font, brush, xEnd.X + 4, xEnd.Y - 8);
+        g.DrawString("Y", Font, brush, yEnd.X + 4, yEnd.Y - 8);
     }
 
     /*
@@ -1451,12 +1480,7 @@ public sealed class PathCanvas : Control
             Document.ImagePath = snapshot.ImagePath;
             Document.CalibrationPath = snapshot.CalibrationPath;
             Document.ActiveTileId = snapshot.ActiveTileId;
-            Document.Frame = new FrameDefinition
-            {
-                OriginX_px = snapshot.Frame.OriginX_px,
-                OriginY_px = snapshot.Frame.OriginY_px,
-                AngleDeg = snapshot.Frame.AngleDeg
-            };
+            Document.Frame = snapshot.Frame.Clone();
             Document.FrameIsDefined = snapshot.FrameIsDefined;
             Document.Defaults = ProcessDefaultsCopy.Clone(snapshot.Defaults);
             Document.Tiles.Clear();

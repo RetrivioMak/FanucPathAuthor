@@ -67,6 +67,12 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _frameOriginX = CreateNumeric(0, 10000, 0);
     private readonly NumericUpDown _frameOriginY = CreateNumeric(0, 10000, 0);
     private readonly NumericUpDown _frameAngle = CreateNumeric(-180, 180, 1);
+    private readonly CheckBox _invertFrameY = new()
+    {
+        Text = "Invert frame Y (Fanuc right-hand)",
+        AutoSize = true,
+        Margin = new Padding(0, 8, 0, 0)
+    };
     private readonly Button _btnEditFrame = new() { Text = "Edit Frame", AutoSize = true };
     private readonly Button _btnApplyFrame = new() { Text = "Apply", AutoSize = true, Enabled = false };
     private readonly Button _btnCancelFrame = new() { Text = "Cancel", AutoSize = true, Enabled = false };
@@ -210,6 +216,17 @@ public sealed class MainForm : Form
         layout.Controls.Add(_frameOriginY, 1, 1);
         layout.Controls.Add(new Label { Text = "Angle deg", AutoSize = true }, 0, 2);
         layout.Controls.Add(_frameAngle, 1, 2);
+        layout.SetColumnSpan(_invertFrameY, 2);
+        layout.Controls.Add(_invertFrameY, 0, 3);
+        var invertHint = new Label
+        {
+            Text = "Export XY becomes millimeters along this frame. +Y is counterclockwise from +X. Set export rotation to None.",
+            AutoSize = true,
+            MaximumSize = new Size(600, 0),
+            Margin = new Padding(0, 0, 0, 4)
+        };
+        layout.SetColumnSpan(invertHint, 2);
+        layout.Controls.Add(invertHint, 0, 4);
 
         var applyModePanel = new FlowLayoutPanel
         {
@@ -222,7 +239,7 @@ public sealed class MainForm : Form
         applyModePanel.Controls.Add(_radioMoveShapes);
         applyModePanel.Controls.Add(_radioFrameOnly);
         layout.SetColumnSpan(applyModePanel, 2);
-        layout.Controls.Add(applyModePanel, 0, 3);
+        layout.Controls.Add(applyModePanel, 0, 5);
 
         var buttons = new FlowLayoutPanel
         {
@@ -236,7 +253,7 @@ public sealed class MainForm : Form
         buttons.Controls.Add(_btnApplyFrame);
         buttons.Controls.Add(_btnCancelFrame);
         layout.SetColumnSpan(buttons, 2);
-        layout.Controls.Add(buttons, 0, 4);
+        layout.Controls.Add(buttons, 0, 6);
 
         group.Controls.Add(layout);
         return group;
@@ -431,6 +448,15 @@ public sealed class MainForm : Form
         _frameOriginX.ValueChanged += (_, _) => OnFrameDraftChanged();
         _frameOriginY.ValueChanged += (_, _) => OnFrameDraftChanged();
         _frameAngle.ValueChanged += (_, _) => OnFrameDraftChanged();
+        _invertFrameY.CheckedChanged += (_, _) =>
+        {
+            if (_updatingUi)
+            {
+                return;
+            }
+
+            _canvas.SetFrameInvertY(_invertFrameY.Checked);
+        };
 
         _btnEditFrame.Click += (_, _) => BeginFrameEdit();
         _btnApplyFrame.Click += (_, _) => ApplyFrameEdit();
@@ -1099,6 +1125,7 @@ public sealed class MainForm : Form
             _frameOriginX.Value = Clamp(_frameOriginX, (decimal)_canvas.Document.Frame.OriginX_px);
             _frameOriginY.Value = Clamp(_frameOriginY, (decimal)_canvas.Document.Frame.OriginY_px);
             _frameAngle.Value = Clamp(_frameAngle, (decimal)_canvas.Document.Frame.AngleDeg);
+            _invertFrameY.Checked = _canvas.Document.Frame.InvertY;
         }
         finally
         {

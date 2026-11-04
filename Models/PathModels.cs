@@ -14,6 +14,21 @@ public sealed class FrameDefinition
     public double OriginX_px { get; set; }
     public double OriginY_px { get; set; }
     public double AngleDeg { get; set; }
+
+    /// <summary>
+    /// Open eVision +Y points down the image. When set, +Y is counterclockwise from +X
+    /// so the frame matches a right-handed Fanuc user frame.
+    /// </summary>
+    public bool InvertY { get; set; }
+
+    public FrameDefinition Clone() =>
+        new()
+        {
+            OriginX_px = OriginX_px,
+            OriginY_px = OriginY_px,
+            AngleDeg = AngleDeg,
+            InvertY = InvertY
+        };
 }
 
 public enum ExportCoordinateMode

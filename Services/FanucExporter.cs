@@ -80,18 +80,119 @@ public static class FanucExporter
         }
 
         sb.AppendLine("/POS");
-        foreach (RobotWaypoint wp in exportWaypoints)
+        // eVision local +Y is clockwise from +X. Fanuc UF +Y is counterclockwise.
+        // Reflect only that Y axis about the frame origin; leave X, R, and UF as computed.
+        // A collinear path does not define Y, so its positions are written unchanged.
+        (double X, double Y)[]? frameInverted = InvertFrameY(exportWaypoints);
+        for (int i = 0; i < exportWaypoints.Count; i++)
         {
+            RobotWaypoint wp = exportWaypoints[i];
+            double x = wp.ExportX_mm;
+            double y = wp.ExportY_mm;
+            if (frameInverted != null)
+            {
+                x = frameInverted[i].X;
+                y = frameInverted[i].Y;
+            }
+
             sb.AppendLine($"P[{wp.Index}]{{");
             sb.AppendLine("   GP1:");
             sb.AppendLine($"   UF : {uf}, UT : {ut},");
             sb.AppendLine(
-                $"   X = {Format(wp.ExportX_mm)} mm, Y = {Format(wp.ExportY_mm)} mm, R = {Format(wp.ExportR_deg)} deg");
+                $"   X = {Format(x)} mm, Y = {Format(y)} mm, R = {Format(wp.ExportR_deg)} deg");
             sb.AppendLine("};");
         }
 
         sb.AppendLine("/END");
         File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Fits export mm = origin + lx·ux + ly·uy, then returns origin + lx·ux − ly·uy.
+    /// Null when the local points do not span both frame axes.
+    /// </summary>
+    private static (double X, double Y)[]? InvertFrameY(IReadOnlyList<RobotWaypoint> waypoints)
+    {
+        int count = waypoints.Count;
+        if (count < 3)
+        {
+            return null;
+        }
+
+        double meanLocalX = 0;
+        double meanLocalY = 0;
+        double meanExportX = 0;
+        double meanExportY = 0;
+        for (int i = 0; i < count; i++)
+        {
+            RobotWaypoint wp = waypoints[i];
+            if (!double.IsFinite(wp.LocalX_px) || !double.IsFinite(wp.LocalY_px))
+            {
+                return null;
+            }
+
+            meanLocalX += wp.LocalX_px;
+            meanLocalY += wp.LocalY_px;
+            meanExportX += wp.ExportX_mm;
+            meanExportY += wp.ExportY_mm;
+        }
+
+        meanLocalX /= count;
+        meanLocalY /= count;
+        meanExportX /= count;
+        meanExportY /= count;
+
+        double sumXX = 0;
+        double sumYY = 0;
+        double sumXY = 0;
+        double sumXExportX = 0;
+        double sumYExportX = 0;
+        double sumXExportY = 0;
+        double sumYExportY = 0;
+        for (int i = 0; i < count; i++)
+        {
+            RobotWaypoint wp = waypoints[i];
+            double localX = wp.LocalX_px - meanLocalX;
+            double localY = wp.LocalY_px - meanLocalY;
+            sumXX += localX * localX;
+            sumYY += localY * localY;
+            sumXY += localX * localY;
+            sumXExportX += localX * wp.ExportX_mm;
+            sumYExportX += localY * wp.ExportX_mm;
+            sumXExportY += localX * wp.ExportY_mm;
+            sumYExportY += localY * wp.ExportY_mm;
+        }
+
+        double determinant = sumXX * sumYY - sumXY * sumXY;
+        double scale = Math.Max(sumXX, sumYY);
+        if (scale < 1e-6 || Math.Abs(determinant) < 1e-8 * scale * scale)
+        {
+            return null;
+        }
+
+        double axisXX = (sumYY * sumXExportX - sumXY * sumYExportX) / determinant;
+        double axisYX = (sumXX * sumYExportX - sumXY * sumXExportX) / determinant;
+        double axisXY = (sumYY * sumXExportY - sumXY * sumYExportY) / determinant;
+        double axisYY = (sumXX * sumYExportY - sumXY * sumXExportY) / determinant;
+        if (!double.IsFinite(axisXX) || !double.IsFinite(axisYX) ||
+            !double.IsFinite(axisXY) || !double.IsFinite(axisYY))
+        {
+            return null;
+        }
+
+        double originX = meanExportX - axisXX * meanLocalX - axisYX * meanLocalY;
+        double originY = meanExportY - axisXY * meanLocalX - axisYY * meanLocalY;
+
+        var inverted = new (double X, double Y)[count];
+        for (int i = 0; i < count; i++)
+        {
+            RobotWaypoint wp = waypoints[i];
+            inverted[i] = (
+                originX + axisXX * wp.LocalX_px - axisYX * wp.LocalY_px,
+                originY + axisXY * wp.LocalX_px - axisYY * wp.LocalY_px);
+        }
+
+        return inverted;
     }
 
     private static IReadOnlyList<RobotWaypoint> FilterExportWaypoints(IReadOnlyList<RobotWaypoint> waypoints) =>

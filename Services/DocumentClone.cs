@@ -11,12 +11,7 @@ public static class DocumentClone
             ImagePath = source.ImagePath,
             CalibrationPath = source.CalibrationPath,
             ActiveTileId = source.ActiveTileId,
-            Frame = new FrameDefinition
-            {
-                OriginX_px = source.Frame.OriginX_px,
-                OriginY_px = source.Frame.OriginY_px,
-                AngleDeg = source.Frame.AngleDeg
-            },
+            Frame = source.Frame.Clone(),
             FrameIsDefined = source.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(source.Defaults),
             Tiles = source.Tiles.Select(CloneTile).ToList(),

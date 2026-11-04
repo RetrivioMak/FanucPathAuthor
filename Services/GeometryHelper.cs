@@ -11,12 +11,13 @@ public static class CoordinateTransform
         double? angleDegOverride = null)
     {
         double angleDeg = angleDegOverride ?? frame.AngleDeg;
+        double orientedY = frame.InvertY ? -localY : localY;
         double rad = DegreesToRadians(angleDeg);
         double cos = Math.Cos(rad);
         double sin = Math.Sin(rad);
         return (
-            frame.OriginX_px + localX * cos - localY * sin,
-            frame.OriginY_px + localX * sin + localY * cos);
+            frame.OriginX_px + localX * cos - orientedY * sin,
+            frame.OriginY_px + localX * sin + orientedY * cos);
     }
 
     public static (double X, double Y) SensorToLocal(
@@ -29,7 +30,9 @@ public static class CoordinateTransform
         double rad = DegreesToRadians(-frame.AngleDeg);
         double cos = Math.Cos(rad);
         double sin = Math.Sin(rad);
-        return (dx * cos - dy * sin, dx * sin + dy * cos);
+        double localX = dx * cos - dy * sin;
+        double localY = dx * sin + dy * cos;
+        return frame.InvertY ? (localX, -localY) : (localX, localY);
     }
 
     public static (double X, double Y) LocalToRobot(

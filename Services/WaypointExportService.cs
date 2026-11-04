@@ -54,6 +54,11 @@ public static class WaypointExportService
             coeffs,
             angleDeg);
 
+        if (frame.InvertY)
+        {
+            (exportX, exportY) = ToFanucFrameMillimeters(localX, localY, frame, coeffs);
+        }
+
         (exportX, exportY) = ApplyExportPlaneRotation(exportX, exportY, defaults.LocalRotation);
 
         double exportR = ResolveExportR_deg(calibration);
@@ -122,6 +127,31 @@ public static class WaypointExportService
 
         return (baseX - frameBaseX, baseY - frameBaseY);
     }
+
+    /// <summary>
+    /// Millimeters along the frame axes. +Y is the Fanuc side of +X, not image-down.
+    /// </summary>
+    private static (double X, double Y) ToFanucFrameMillimeters(
+        double localX,
+        double localY,
+        FrameDefinition frame,
+        PixelToRobotCoeffs coeffs)
+    {
+        (double originX, double originY) = CoordinateTransform.LocalToSensor(0, 0, frame);
+        (double xAxisX, double xAxisY) = CoordinateTransform.LocalToSensor(1, 0, frame);
+        (double yAxisX, double yAxisY) = CoordinateTransform.LocalToSensor(0, 1, frame);
+        (double axisXx, double axisXy) = LinearPixelDelta(coeffs, xAxisX - originX, xAxisY - originY);
+        (double axisYx, double axisYy) = LinearPixelDelta(coeffs, yAxisX - originX, yAxisY - originY);
+        return (localX * Hypot(axisXx, axisXy), localY * Hypot(axisYx, axisYy));
+    }
+
+    private static (double X, double Y) LinearPixelDelta(
+        PixelToRobotCoeffs coeffs,
+        double pixelX,
+        double pixelY) =>
+        (coeffs.A * pixelX + coeffs.B * pixelY, coeffs.C * pixelX + coeffs.D * pixelY);
+
+    private static double Hypot(double x, double y) => Math.Sqrt(x * x + y * y);
 
     private static (double X, double Y) ComputeBaseRobotMm(
         double sensorX,

@@ -20,6 +20,26 @@ public class CoordinateTransformTests
     }
 
     [Fact]
+    public void InvertY_PointsLocalYOppositeImageDown_AndRoundTrips()
+    {
+        var frame = new FrameDefinition
+        {
+            OriginX_px = 1000,
+            OriginY_px = 800,
+            AngleDeg = 0,
+            InvertY = true
+        };
+
+        var (sensorX, sensorY) = CoordinateTransform.LocalToSensor(0, 10, frame);
+        Assert.Equal(1000, sensorX, 3);
+        Assert.Equal(790, sensorY, 3);
+
+        var (backX, backY) = CoordinateTransform.SensorToLocal(sensorX, sensorY, frame);
+        Assert.Equal(0, backX, 3);
+        Assert.Equal(10, backY, 3);
+    }
+
+    [Fact]
     public void PixelToRobot_UsesAffineFromCalibration()
     {
         var coeffs = new PixelToRobotCoeffs
@@ -512,6 +532,69 @@ public class WaypointExportServiceTests
         Assert.Equal(3.24, values.ExportX_mm, 3);
         Assert.Equal(3.24, values.ExportY_mm, 3);
     }
+
+    [Fact]
+    public void InvertY_ExportsMillimetersAlongFrameAxes()
+    {
+        var calibration = CreateCalibration();
+        var frame = new FrameDefinition
+        {
+            OriginX_px = calibration.ReferencePixelX,
+            OriginY_px = calibration.ReferencePixelY,
+            AngleDeg = 90,
+            InvertY = true
+        };
+        var defaults = new ProcessDefaults
+        {
+            CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
+            LocalRotation = ExportLocalRotation.None
+        };
+
+        WaypointExportValues values = WaypointExportService.ComputeExportValues(
+            100,
+            0,
+            frame,
+            calibration,
+            defaults);
+
+        Assert.Equal(1, values.ExportX_mm, 3);
+        Assert.Equal(0, values.ExportY_mm, 3);
+        Assert.Equal(calibration.ReferencePixelX, values.SensorX_px, 3);
+        Assert.Equal(calibration.ReferencePixelY + 100, values.SensorY_px, 3);
+    }
+
+    [Fact]
+    public void InvertY_ImageDownPoint_ExportsNegativeFrameY()
+    {
+        var calibration = CreateCalibration();
+        var eVision = new FrameDefinition
+        {
+            OriginX_px = calibration.ReferencePixelX,
+            OriginY_px = calibration.ReferencePixelY
+        };
+        var fanuc = eVision.Clone();
+        fanuc.InvertY = true;
+        var segment = new PathSegment { Kind = SegmentKind.Dot, X1 = 0, Y1 = 100 };
+        FrameTransformHelper.RebindSegmentsToFrame(new[] { segment }, eVision, fanuc);
+
+        var defaults = new ProcessDefaults
+        {
+            CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
+            LocalRotation = ExportLocalRotation.None
+        };
+        WaypointExportValues values = WaypointExportService.ComputeExportValues(
+            segment.X1,
+            segment.Y1,
+            fanuc,
+            calibration,
+            defaults);
+
+        Assert.Equal(0, segment.X1, 3);
+        Assert.Equal(-100, segment.Y1, 3);
+        Assert.Equal(0, values.ExportX_mm, 3);
+        Assert.Equal(-1, values.ExportY_mm, 3);
+        Assert.Equal(calibration.ReferencePixelY + 100, values.SensorY_px, 3);
+    }
 }
 
 public class GeometryHelperTests
@@ -848,6 +931,27 @@ public class FrameTransformHelperTests
         Assert.Equal(sensorX, newSensorX, 3);
         Assert.Equal(sensorY, newSensorY, 3);
         Assert.Equal(-40, segment.X1, 3);
+    }
+
+    [Fact]
+    public void RebindSegments_KeepsSensorPosition_WhenYIsInverted()
+    {
+        var oldFrame = new FrameDefinition { OriginX_px = 100, OriginY_px = 200, AngleDeg = 20 };
+        var newFrame = oldFrame.Clone();
+        newFrame.InvertY = true;
+        var segment = new PathSegment { Kind = SegmentKind.Line, X1 = 30, Y1 = 40, X2 = -10, Y2 = 5 };
+
+        var start = CoordinateTransform.LocalToSensor(segment.X1, segment.Y1, oldFrame);
+        var end = CoordinateTransform.LocalToSensor(segment.X2, segment.Y2, oldFrame);
+        FrameTransformHelper.RebindSegmentsToFrame(new[] { segment }, oldFrame, newFrame);
+        var newStart = CoordinateTransform.LocalToSensor(segment.X1, segment.Y1, newFrame);
+        var newEnd = CoordinateTransform.LocalToSensor(segment.X2, segment.Y2, newFrame);
+
+        Assert.Equal(start.X, newStart.X, 3);
+        Assert.Equal(start.Y, newStart.Y, 3);
+        Assert.Equal(end.X, newEnd.X, 3);
+        Assert.Equal(end.Y, newEnd.Y, 3);
+        Assert.Equal(-40, segment.Y1, 3);
     }
 }
 
