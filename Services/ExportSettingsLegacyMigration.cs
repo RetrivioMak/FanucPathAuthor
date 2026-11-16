@@ -1,7 +1,7 @@
 using System.Text.Json;
-using FanucPathAuthor.Models;
+using DispensePathAuthor.Models;
 
-namespace FanucPathAuthor.Services;
+namespace DispensePathAuthor.Services;
 
 public static class ExportSettingsLegacyMigration
 {

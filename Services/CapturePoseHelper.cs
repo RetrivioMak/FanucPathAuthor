@@ -1,6 +1,6 @@
-using FanucPathAuthor.Models;
+using DispensePathAuthor.Models;
 
-namespace FanucPathAuthor.Services;
+namespace DispensePathAuthor.Services;
 
 public readonly record struct CaptureRobotPose(double X_mm, double Y_mm, double R_deg);
 

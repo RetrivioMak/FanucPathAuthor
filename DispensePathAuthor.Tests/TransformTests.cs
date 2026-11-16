@@ -1,8 +1,8 @@
-using FanucPathAuthor.Models;
-using FanucPathAuthor.Services;
+using DispensePathAuthor.Models;
+using DispensePathAuthor.Services;
 using Xunit;
 
-namespace FanucPathAuthor.Tests;
+namespace DispensePathAuthor.Tests;
 
 public class CoordinateTransformTests
 {

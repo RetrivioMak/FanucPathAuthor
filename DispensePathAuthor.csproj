@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <RootNamespace>FanucPathAuthor</RootNamespace>
-    <AssemblyName>FanucPathAuthor</AssemblyName>
+    <RootNamespace>DispensePathAuthor</RootNamespace>
+    <AssemblyName>DispensePathAuthor</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Version>1.0.4</Version>
     <AssemblyVersion>1.0.4.0</AssemblyVersion>
@@ -22,10 +22,10 @@
 
   <!-- SDK includes all *.cs recursively; keep the test project out of the WinExe build. -->
   <ItemGroup>
-    <Compile Remove="FanucPathAuthor.Tests\**" />
-    <EmbeddedResource Remove="FanucPathAuthor.Tests\**" />
-    <None Remove="FanucPathAuthor.Tests\**" />
-    <Content Remove="FanucPathAuthor.Tests\**" />
+    <Compile Remove="DispensePathAuthor.Tests\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Tests\**" />
+    <None Remove="DispensePathAuthor.Tests\**" />
+    <Content Remove="DispensePathAuthor.Tests\**" />
   </ItemGroup>
 
   <!-- Legacy VS template file, if present, conflicts with SDK-generated assembly info. -->

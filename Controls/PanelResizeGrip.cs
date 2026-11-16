@@ -1,4 +1,4 @@
-namespace FanucPathAuthor.Controls;
+namespace DispensePathAuthor.Controls;
 
 /// <summary>
 /// Vertical grip on the left edge of a right-docked panel; drag to resize width.

@@ -1,8 +1,8 @@
-using FanucPathAuthor.Controls;
-using FanucPathAuthor.Models;
-using FanucPathAuthor.Services;
+using DispensePathAuthor.Controls;
+using DispensePathAuthor.Models;
+using DispensePathAuthor.Services;
 
-namespace FanucPathAuthor;
+namespace DispensePathAuthor;
 
 internal static class Program
 {

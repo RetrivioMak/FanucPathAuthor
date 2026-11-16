@@ -1,4 +1,4 @@
-# FanucPathAuthor (MVP)
+# DispensePathAuthor (MVP)
 
 Standalone C# WinForms tool for authoring glue trajectories from a CCD3 still image.
 
@@ -18,7 +18,7 @@ Standalone C# WinForms tool for authoring glue trajectories from a CCD3 still im
 Requires .NET 8 SDK on Windows x64:
 
 ```powershell
-cd FanucPathAuthor
+cd DispensePathAuthor
 dotnet build -c Release
 ```
 
@@ -34,7 +34,7 @@ Or publish a self-contained exe:
 dotnet publish -c Release
 ```
 
-Output: `bin\x64\Release\net8.0-windows\win-x64\publish\FanucPathAuthor.exe`
+Output: `bin\x64\Release\net8.0-windows\win-x64\publish\DispensePathAuthor.exe`
 
 ## Workflow
 
@@ -87,26 +87,26 @@ All segment coordinates are **frame-local pixels**.
 - **Rectangle tool** (2 clicks -> 4 Line segments)
 - **Cursor coordinates** in status bar (sensor px + frame-local px)
 - **Save path JSON as...**
-- Unit tests in `FanucPathAuthor.Tests`
+- Unit tests in `DispensePathAuthor.Tests`
 
 Run tests:
 
 ```powershell
-dotnet test FanucPathAuthor.Tests
+dotnet test DispensePathAuthor.Tests
 ```
 
 ### Build troubleshooting
 
 If you see `CS0579` duplicate assembly attributes or `Xunit` errors in the **main** project:
 
-1. Pull the latest `FanucPathAuthor.csproj` (test sources must be excluded from the WinExe).
+1. Pull the latest `DispensePathAuthor.csproj` (test sources must be excluded from the WinExe).
 2. Delete `obj` and `bin` folders, then rebuild:
    ```powershell
    dotnet clean
    dotnet build
    ```
 3. If `Properties\AssemblyInfo.cs` exists, delete it (SDK generates assembly info automatically).
-4. Build the **solution** (`FanucPathAuthor.sln`), not only the test `.csproj`, when running tests.
+4. Build the **solution** (`DispensePathAuthor.sln`), not only the test `.csproj`, when running tests.
 
 ## Notes
 

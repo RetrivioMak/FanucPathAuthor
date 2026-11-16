@@ -1,4 +1,4 @@
-namespace FanucPathAuthor.Controls;
+namespace DispensePathAuthor.Controls;
 
 internal static class ToolIconFactory
 {

@@ -18,6 +18,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FanucPathAuthor.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.csproj" />
   </ItemGroup>
 </Project>

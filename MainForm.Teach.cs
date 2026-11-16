@@ -1,7 +1,7 @@
-using FanucPathAuthor.Models;
-using FanucPathAuthor.Services;
+using DispensePathAuthor.Models;
+using DispensePathAuthor.Services;
 
-namespace FanucPathAuthor;
+namespace DispensePathAuthor;
 
 public sealed partial class MainForm
 {

@@ -1,4 +1,4 @@
-namespace FanucPathAuthor.Models;
+namespace DispensePathAuthor.Models;
 
 /// <summary>
 /// User export preferences persisted across application sessions.

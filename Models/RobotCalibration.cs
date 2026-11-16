@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace FanucPathAuthor.Models;
+namespace DispensePathAuthor.Models;
 
 public enum CalibrationFileKind
 {

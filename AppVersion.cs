@@ -1,10 +1,10 @@
 using System.Reflection;
 
-namespace FanucPathAuthor;
+namespace DispensePathAuthor;
 
 public static class AppVersion
 {
-    public const string ProductName = "Fanuc Path Author";
+    public const string ProductName = "Dispense Path Author";
 
     /// <summary>Semantic version, e.g. 1.0.4.</summary>
     public static string Version =>

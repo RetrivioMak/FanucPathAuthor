@@ -1,4 +1,4 @@
-namespace FanucPathAuthor.Controls;
+namespace DispensePathAuthor.Controls;
 
 public sealed class ToolPaletteButton : Button
 {

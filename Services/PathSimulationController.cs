@@ -1,4 +1,4 @@
-namespace FanucPathAuthor.Services;
+namespace DispensePathAuthor.Services;
 
 public enum SimulationState
 {
