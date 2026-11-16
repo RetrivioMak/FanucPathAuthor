@@ -116,6 +116,19 @@ public sealed class PathCanvas : Control
         _image?.Dispose();
         _image = null;
 
+        if (Document.Workspace == WorkspaceKind.Teach)
+        {
+            Document.ImagePath = null;
+            UpdateTeachCanvasBounds();
+            if (fitView)
+            {
+                FitToView();
+            }
+
+            Invalidate();
+            return;
+        }
+
         if (_mosaicCalibration?.PixelToRobot != null && Document.Tiles.Count > 0)
         {
             MosaicLayout? layout = MosaicLayoutService.TryBuild(Document, _mosaicCalibration);
@@ -180,7 +193,9 @@ public sealed class PathCanvas : Control
         Invalidate();
     }
 
-    private bool HasCanvas => _mosaicTiles.Count > 0 || _image != null;
+    private bool IsTeach => Document.Workspace == WorkspaceKind.Teach;
+
+    private bool HasCanvas => IsTeach || _mosaicTiles.Count > 0 || _image != null;
 
     private void ClearMosaicTiles()
     {
@@ -202,12 +217,21 @@ public sealed class PathCanvas : Control
 
         float scaleX = ClientSize.Width / _canvasBounds.Width;
         float scaleY = ClientSize.Height / _canvasBounds.Height;
-        _zoom = Math.Min(scaleX, scaleY) * 0.95f;
-        _panOffset = new PointF(
-            (ClientSize.Width - _canvasBounds.Width * _zoom) / 2f - _canvasBounds.Left * _zoom,
-            (ClientSize.Height - _canvasBounds.Height * _zoom) / 2f - _canvasBounds.Top * _zoom);
+        float fitted = Math.Min(scaleX, scaleY) * 0.95f;
+        _zoom = IsTeach ? ClampZoom(fitted) : fitted;
+        double centerX = _canvasBounds.Left + _canvasBounds.Width / 2.0;
+        double centerY = _canvasBounds.Top + _canvasBounds.Height / 2.0;
+        _panOffset = PanForWorldAt(centerX, centerY, ClientSize.Width / 2f, ClientSize.Height / 2f);
         Invalidate();
     }
+
+    private float ClampZoom(float zoom) =>
+        IsTeach ? Math.Clamp(zoom, 0.2f, 8000f) : Math.Clamp(zoom, 0.05f, 20f);
+
+    private PointF PanForWorldAt(double worldX, double worldY, float screenX, float screenY) =>
+        IsTeach
+            ? new PointF(screenX - (float)(worldX * _zoom), screenY + (float)(worldY * _zoom))
+            : new PointF(screenX - (float)(worldX * _zoom), screenY - (float)(worldY * _zoom));
 
     public void SetFrameFromSensorPoint(double sensorX, double sensorY)
     {
@@ -220,6 +244,12 @@ public sealed class PathCanvas : Control
         double angleDeg,
         bool moveShapesWithFrame)
     {
+        if (IsTeach)
+        {
+            StatusMessage?.Invoke(this, "Teach coordinates stay in the robot frame.");
+            return;
+        }
+
         if (Math.Abs(Document.Frame.OriginX_px - originX) < double.Epsilon &&
             Math.Abs(Document.Frame.OriginY_px - originY) < double.Epsilon &&
             Math.Abs(Document.Frame.AngleDeg - angleDeg) < double.Epsilon)
@@ -272,6 +302,11 @@ public sealed class PathCanvas : Control
 
     public void SetFrameInvertY(bool invertY)
     {
+        if (IsTeach)
+        {
+            return;
+        }
+
         if (Document.Frame.InvertY == invertY)
         {
             return;
@@ -317,11 +352,15 @@ public sealed class PathCanvas : Control
         try
         {
             Document.SchemaVersion = document.SchemaVersion;
+            Document.Workspace = document.Workspace;
             Document.CalibrationPath = document.CalibrationPath;
             Document.ActiveTileId = document.ActiveTileId;
             Document.Frame = document.Frame;
             Document.FrameIsDefined = document.FrameIsDefined;
             Document.Defaults = document.Defaults;
+            Document.Grid = document.Grid.Clone();
+            Document.ReferencePoints.Clear();
+            Document.ReferencePoints.AddRange(document.ReferencePoints.Select(static point => point.Clone()));
             Document.Segments.Clear();
             Document.Segments.AddRange(document.Segments.Select(DocumentClone.CloneSegment));
             Document.Tiles.Clear();
@@ -357,12 +396,15 @@ public sealed class PathCanvas : Control
         return new PathDocument
         {
             SchemaVersion = Document.SchemaVersion,
+            Workspace = Document.Workspace,
             ImagePath = Document.ImagePath,
             CalibrationPath = Document.CalibrationPath,
             ActiveTileId = Document.ActiveTileId,
             Frame = Document.Frame.Clone(),
             FrameIsDefined = Document.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(Document.Defaults),
+            Grid = Document.Grid.Clone(),
+            ReferencePoints = Document.ReferencePoints.Select(static point => point.Clone()).ToList(),
             Tiles = Document.Tiles.Select(DocumentClone.CloneTile).ToList(),
             Segments = Document.Segments
                 .Select(static s => new PathSegment
@@ -487,7 +529,7 @@ public sealed class PathCanvas : Control
 
     protected override void OnMouseWheel(MouseEventArgs e)
     {
-        if (_image == null && _mosaicTiles.Count == 0)
+        if (!HasCanvas)
         {
             base.OnMouseWheel(e);
             return;
@@ -495,19 +537,16 @@ public sealed class PathCanvas : Control
 
         float oldZoom = _zoom;
         float factor = e.Delta > 0 ? 1.1f : 0.9f;
-        float newZoom = Math.Clamp(_zoom * factor, 0.05f, 20f);
+        float newZoom = ClampZoom(_zoom * factor);
         if (Math.Abs(oldZoom - newZoom) < float.Epsilon)
         {
             base.OnMouseWheel(e);
             return;
         }
 
-        // Keep the image point under the cursor fixed while zoom changes.
-        float imageX = (e.X - _panOffset.X) / oldZoom;
-        float imageY = (e.Y - _panOffset.Y) / oldZoom;
+        PointF world = ScreenToImage(e.Location);
         _zoom = newZoom;
-        _panOffset.X = e.X - imageX * _zoom;
-        _panOffset.Y = e.Y - imageY * _zoom;
+        _panOffset = PanForWorldAt(world.X, world.Y, e.X, e.Y);
         Invalidate();
 
         base.OnMouseWheel(e);
@@ -523,6 +562,12 @@ public sealed class PathCanvas : Control
             _isPanning = true;
             _lastMouse = e.Location;
             Cursor = Cursors.Hand;
+            return;
+        }
+
+        if (e.Button == MouseButtons.Right && IsTeach)
+        {
+            ShowReferenceMenu(e.Location);
             return;
         }
 
@@ -544,6 +589,12 @@ public sealed class PathCanvas : Control
         switch (ActiveTool)
         {
             case DrawTool.SetFrameOrigin:
+                if (IsTeach)
+                {
+                    StatusMessage?.Invoke(this, "Teach coordinates stay in the robot frame.");
+                    break;
+                }
+
                 SetFrameFromSensorPoint(sensorX, sensorY);
                 break;
 
@@ -558,7 +609,7 @@ public sealed class PathCanvas : Control
             case DrawTool.Dot:
             {
                 (double drawX, double drawY, bool snapped) = ResolveDrawClick(sensorX, sensorY);
-                if (snapped && !ConfirmDuplicateDot(drawX, drawY))
+                if ((snapped || IsTeach) && !ConfirmDuplicateDot(drawX, drawY))
                 {
                     break;
                 }
@@ -611,13 +662,14 @@ public sealed class PathCanvas : Control
         else if (_isDraggingVertex && _activeVertexPick != null && HasCanvas && !SimulationMode)
         {
             PointF imagePoint = ScreenToImage(e.Location);
-            (double localX, double localY) = CoordinateTransform.SensorToLocal(
-                imagePoint.X,
-                imagePoint.Y,
-                Document.Frame);
-            PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY);
-
-            if (SnapToPointEnabled)
+            double sensorX = imagePoint.X;
+            double sensorY = imagePoint.Y;
+            if (IsTeach)
+            {
+                (sensorX, sensorY, _) = ResolveTeachPointer(sensorX, sensorY, GetSnapExcludePoints(_activeVertexPick));
+                _snapHover = (sensorX, sensorY);
+            }
+            else if (SnapToPointEnabled)
             {
                 (double resolvedX, double resolvedY, bool snapped) = ResolveSnapPosition(
                     imagePoint.X,
@@ -630,6 +682,11 @@ public sealed class PathCanvas : Control
                 ClearSnapHover();
             }
 
+            (double localX, double localY) = CoordinateTransform.SensorToLocal(
+                sensorX,
+                sensorY,
+                Document.Frame);
+            PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY);
             Invalidate();
         }
         else if (HasCanvas)
@@ -641,6 +698,13 @@ public sealed class PathCanvas : Control
             if (ActiveTool == DrawTool.Move)
             {
                 UpdateMoveHover(sensorX, sensorY);
+            }
+            else if (IsTeach && IsDrawTool(ActiveTool))
+            {
+                (double resolvedX, double resolvedY, bool snappedToPoint) = ResolveTeachPointer(sensorX, sensorY, null);
+                sensorX = resolvedX;
+                sensorY = resolvedY;
+                _snapHover = snappedToPoint || Document.Grid.Enabled ? (resolvedX, resolvedY) : null;
             }
             else if (SnapToPointEnabled && IsDrawTool(ActiveTool))
             {
@@ -659,10 +723,11 @@ public sealed class PathCanvas : Control
                 sensorY,
                 Document.Frame);
             _cursorLocal = (localX, localY);
-            CursorMoved?.Invoke(this, (Math.Round(sensorX), Math.Round(sensorY), localX, localY));
+            CursorMoved?.Invoke(this, (sensorX, sensorY, localX, localY));
 
             if (_pendingPoints.Count > 0 ||
                 ActiveTool == DrawTool.Move ||
+                (IsTeach && IsDrawTool(ActiveTool)) ||
                 (SnapToPointEnabled && IsDrawTool(ActiveTool)))
             {
                 Invalidate();
@@ -738,7 +803,16 @@ public sealed class PathCanvas : Control
             e.Graphics.DrawImage(_image, dest);
         }
 
-        DrawFrame(e.Graphics, Document.Frame, Color.Lime, "Frame");
+        if (IsTeach)
+        {
+            DrawTeachGrid(e.Graphics);
+        }
+
+        DrawFrame(e.Graphics, Document.Frame, Color.Lime, IsTeach ? "Robot" : "Frame");
+        if (IsTeach)
+        {
+            DrawReferencePoints(e.Graphics);
+        }
         if (DraftFrame != null &&
             (Math.Abs(DraftFrame.OriginX_px - Document.Frame.OriginX_px) > double.Epsilon ||
              Math.Abs(DraftFrame.OriginY_px - Document.Frame.OriginY_px) > double.Epsilon ||
@@ -965,7 +1039,20 @@ public sealed class PathCanvas : Control
             return;
         }
 
-        if (SnapToPointEnabled && HasCanvas)
+        if (IsTeach && HasCanvas)
+        {
+            PointF imagePoint = ScreenToImage(screenLocation);
+            (double teachX, double teachY, _) = ResolveTeachPointer(
+                imagePoint.X,
+                imagePoint.Y,
+                GetSnapExcludePoints(_activeVertexPick));
+            (double teachLocalX, double teachLocalY) = CoordinateTransform.SensorToLocal(
+                teachX,
+                teachY,
+                Document.Frame);
+            PointEditHelper.ApplyDrag(Document, _activeVertexPick, teachLocalX, teachLocalY);
+        }
+        else if (SnapToPointEnabled && HasCanvas)
         {
             PointF imagePoint = ScreenToImage(screenLocation);
             (double sensorX, double sensorY, bool snapped) = ResolveSnapPosition(
@@ -1099,6 +1186,12 @@ public sealed class PathCanvas : Control
 
     private (double SensorX, double SensorY, bool Snapped) ResolveDrawClick(double sensorX, double sensorY)
     {
+        if (IsTeach)
+        {
+            (double teachX, double teachY, bool snappedToPoint) = ResolveTeachPointer(sensorX, sensorY, null);
+            return (teachX, teachY, snappedToPoint);
+        }
+
         if (!SnapToPointEnabled || !IsDrawTool(ActiveTool))
         {
             return (sensorX, sensorY, false);
@@ -1120,8 +1213,9 @@ public sealed class PathCanvas : Control
 
     private bool ConfirmDuplicateDot(double sensorX, double sensorY)
     {
-        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document);
-        if (!SnapPointHelper.ContainsSensorPoint(points, sensorX, sensorY))
+        double tolerance = IsTeach ? 1e-4 : 0.5;
+        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document, tolerance);
+        if (!SnapPointHelper.ContainsSensorPoint(points, sensorX, sensorY, tolerance))
         {
             return true;
         }
@@ -1145,7 +1239,7 @@ public sealed class PathCanvas : Control
 
         if (_isDraggingVertex)
         {
-            if (!SnapToPointEnabled)
+            if (!IsTeach && !SnapToPointEnabled)
             {
                 return;
             }
@@ -1153,6 +1247,10 @@ public sealed class PathCanvas : Control
         else if (ActiveTool == DrawTool.Move)
         {
             // Always highlight pick targets in Move mode.
+        }
+        else if (IsTeach && IsDrawTool(ActiveTool))
+        {
+            // Teach drawing follows the grid and reference points.
         }
         else if (!(SnapToPointEnabled && IsDrawTool(ActiveTool)))
         {
@@ -1170,7 +1268,7 @@ public sealed class PathCanvas : Control
 
     private void SelectSegmentAt(double sensorX, double sensorY)
     {
-        const double pickRadius = 12;
+        double pickRadius = IsTeach ? 12.0 / Math.Max(_zoom, 0.001f) : 12;
         SelectedSegmentIndex = null;
 
         for (int i = Document.Segments.Count - 1; i >= 0; i--)
@@ -1205,10 +1303,11 @@ public sealed class PathCanvas : Control
 
     private void DrawFrame(Graphics g, FrameDefinition frame, Color color, string label)
     {
+        double axis = IsTeach ? 48.0 / Math.Max(_zoom, 0.001f) : 80;
         var (originX, originY) = CoordinateTransform.LocalToSensor(0, 0, frame);
         PointF origin = ImageToScreen(originX, originY);
-        var (xSensorX, xSensorY) = CoordinateTransform.LocalToSensor(80, 0, frame);
-        var (ySensorX, ySensorY) = CoordinateTransform.LocalToSensor(0, 80, frame);
+        var (xSensorX, xSensorY) = CoordinateTransform.LocalToSensor(axis, 0, frame);
+        var (ySensorX, ySensorY) = CoordinateTransform.LocalToSensor(0, axis, frame);
         PointF xEnd = ImageToScreen(xSensorX, xSensorY);
         PointF yEnd = ImageToScreen(ySensorX, ySensorY);
 
@@ -1477,12 +1576,16 @@ public sealed class PathCanvas : Control
         try
         {
             Document.SchemaVersion = snapshot.SchemaVersion;
+            Document.Workspace = snapshot.Workspace;
             Document.ImagePath = snapshot.ImagePath;
             Document.CalibrationPath = snapshot.CalibrationPath;
             Document.ActiveTileId = snapshot.ActiveTileId;
             Document.Frame = snapshot.Frame.Clone();
             Document.FrameIsDefined = snapshot.FrameIsDefined;
             Document.Defaults = ProcessDefaultsCopy.Clone(snapshot.Defaults);
+            Document.Grid = snapshot.Grid.Clone();
+            Document.ReferencePoints.Clear();
+            Document.ReferencePoints.AddRange(snapshot.ReferencePoints.Select(static point => point.Clone()));
             Document.Tiles.Clear();
             Document.Tiles.AddRange(snapshot.Tiles.Select(DocumentClone.CloneTile));
             Document.Segments.Clear();
@@ -1543,6 +1646,12 @@ public sealed class PathCanvas : Control
             Math.Min(topLeft.Y, bottomRight.Y),
             Math.Max(topLeft.X, bottomRight.X),
             Math.Max(topLeft.Y, bottomRight.Y));
+
+        if (IsTeach)
+        {
+            startAngle = -startAngle;
+            sweepAngle = -sweepAngle;
+        }
 
         if (screenBounds.Width > 1 && screenBounds.Height > 1)
         {
@@ -1612,14 +1721,331 @@ public sealed class PathCanvas : Control
     }
 
     private PointF ScreenToImage(Point screenPoint) =>
-        new(
-            (screenPoint.X - _panOffset.X) / _zoom,
-            (screenPoint.Y - _panOffset.Y) / _zoom);
+        IsTeach
+            ? new PointF(
+                (screenPoint.X - _panOffset.X) / _zoom,
+                (_panOffset.Y - screenPoint.Y) / _zoom)
+            : new PointF(
+                (screenPoint.X - _panOffset.X) / _zoom,
+                (screenPoint.Y - _panOffset.Y) / _zoom);
 
     private PointF ImageToScreen(double imageX, double imageY) =>
-        new(
-            (float)(imageX * _zoom + _panOffset.X),
-            (float)(imageY * _zoom + _panOffset.Y));
+        IsTeach
+            ? new PointF(
+                (float)(imageX * _zoom + _panOffset.X),
+                (float)(-imageY * _zoom + _panOffset.Y))
+            : new PointF(
+                (float)(imageX * _zoom + _panOffset.X),
+                (float)(imageY * _zoom + _panOffset.Y));
+
+    public void AddReferencePoints(IReadOnlyList<ReferencePoint> points)
+    {
+        if (points.Count == 0)
+        {
+            return;
+        }
+
+        if (!WorkspaceGuard.CanAdopt(Document.Workspace, WorkspaceKind.Teach))
+        {
+            throw new InvalidOperationException(WorkspaceGuard.RefusalMessage(Document.Workspace));
+        }
+
+        bool becameTeach = Document.Workspace != WorkspaceKind.Teach;
+        CommitUndoSnapshot();
+        WorkspaceGuard.Adopt(Document, WorkspaceKind.Teach);
+        Document.ReferencePoints.AddRange(points.Select(static point => point.Clone()));
+        UpdateTeachCanvasBounds();
+        if (becameTeach)
+        {
+            FitToView();
+        }
+
+        RaiseDocumentChanged();
+        StatusMessage?.Invoke(this, $"Added {points.Count} teach point(s)");
+        Invalidate();
+    }
+
+    public void RemoveReferencePoint(string id)
+    {
+        int index = Document.ReferencePoints.FindIndex(point => point.Id == id);
+        if (index < 0)
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.ReferencePoints.RemoveAt(index);
+        UpdateTeachCanvasBounds();
+        RaiseDocumentChanged();
+        StatusMessage?.Invoke(this, "Teach point removed");
+        Invalidate();
+    }
+
+    public void AlignGridTo(double x, double y)
+    {
+        if (!IsTeach)
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.Grid.OriginX_mm = x;
+        Document.Grid.OriginY_mm = y;
+        Document.Grid.IsAligned = true;
+        Document.Grid.Enabled = true;
+        RaiseDocumentChanged();
+        StatusMessage?.Invoke(this, $"Grid aligned to ({x:0.###}, {y:0.###}) mm");
+        Invalidate();
+    }
+
+    public void SetGridEnabled(bool enabled)
+    {
+        if (!IsTeach || Document.Grid.Enabled == enabled)
+        {
+            return;
+        }
+
+        Document.Grid.Enabled = enabled;
+        Invalidate();
+    }
+
+    public void SetGridStep(double stepMm)
+    {
+        if (!IsTeach || stepMm <= 0 || Math.Abs(Document.Grid.Step_mm - stepMm) < 1e-9)
+        {
+            return;
+        }
+
+        Document.Grid.Step_mm = stepMm;
+        Invalidate();
+    }
+
+    public void ResetProject()
+    {
+        ProcessDefaults defaults = ProcessDefaultsCopy.Clone(Document.Defaults);
+        _suppressUndo = true;
+        try
+        {
+            ClearMosaicTiles();
+            _image?.Dispose();
+            _image = null;
+            Document.SchemaVersion = 4;
+            Document.Workspace = WorkspaceKind.Unset;
+            Document.ImagePath = null;
+            Document.CalibrationPath = null;
+            Document.ActiveTileId = null;
+            Document.Frame = new FrameDefinition();
+            Document.FrameIsDefined = false;
+            Document.Defaults = defaults;
+            Document.Grid = new TeachGridSettings();
+            Document.ReferencePoints.Clear();
+            Document.Tiles.Clear();
+            Document.Segments.Clear();
+            _canvasBounds = RectangleF.Empty;
+            _zoom = 1f;
+            _panOffset = PointF.Empty;
+            SelectedSegmentIndex = null;
+            _pendingPoints.Clear();
+            _cursorLocal = null;
+            _snapHover = null;
+            _isDraggingVertex = false;
+            _activeVertexPick = null;
+            Capture = false;
+            DraftFrame = null;
+            _undoRedo.Clear();
+        }
+        finally
+        {
+            _suppressUndo = false;
+        }
+
+        RaiseDocumentChanged();
+        RaiseSelectionChanged();
+        RaiseUndoStateChanged();
+        Invalidate();
+    }
+
+    private void UpdateTeachCanvasBounds()
+    {
+        var xs = new List<double>();
+        var ys = new List<double>();
+        foreach (ReferencePoint point in Document.ReferencePoints)
+        {
+            xs.Add(point.X_mm);
+            ys.Add(point.Y_mm);
+        }
+
+        foreach (PathSegment segment in Document.Segments)
+        {
+            foreach ((double x, double y) in GeometryHelper.ExpandSegment(segment))
+            {
+                xs.Add(x);
+                ys.Add(y);
+            }
+        }
+
+        if (xs.Count == 0)
+        {
+            _canvasBounds = new RectangleF(-10, -10, 20, 20);
+            return;
+        }
+
+        double minX = xs.Min();
+        double maxX = xs.Max();
+        double minY = ys.Min();
+        double maxY = ys.Max();
+        double spanX = Math.Max(maxX - minX, 1);
+        double spanY = Math.Max(maxY - minY, 1);
+        double padX = Math.Max(spanX * 0.25, 5);
+        double padY = Math.Max(spanY * 0.25, 5);
+        _canvasBounds = new RectangleF(
+            (float)(minX - padX),
+            (float)(minY - padY),
+            (float)(spanX + padX * 2),
+            (float)(spanY + padY * 2));
+    }
+
+    private (double X, double Y, bool SnappedToPoint) ResolveTeachPointer(
+        double sensorX,
+        double sensorY,
+        IEnumerable<(double LocalX, double LocalY)>? excludeLocal)
+    {
+        const double tolerance = 1e-4;
+        var points = new List<(double X, double Y)>();
+        foreach (ReferencePoint reference in Document.ReferencePoints)
+        {
+            points.Add((reference.X_mm, reference.Y_mm));
+        }
+
+        IReadOnlyList<(double SensorX, double SensorY)> vertices = excludeLocal == null
+            ? SnapPointHelper.CollectSensorPoints(Document, tolerance)
+            : SnapPointHelper.CollectSensorPointsExcluding(Document, excludeLocal, tolerance);
+        points.AddRange(vertices.Select(static point => (point.SensorX, point.SensorY)));
+        return TeachPointer.Resolve(
+            sensorX,
+            sensorY,
+            points,
+            Document.Grid,
+            ImageToScreen,
+            SnapPointHelper.DefaultPickRadiusScreenPx);
+    }
+
+    private void ShowReferenceMenu(Point screen)
+    {
+        ReferencePoint? point = HitReference(screen);
+        if (point == null)
+        {
+            return;
+        }
+
+        double x = point.X_mm;
+        double y = point.Y_mm;
+        string name = point.Name;
+        var menu = new ContextMenuStrip();
+        menu.Items.Add($"Align grid to {name}", null, (_, _) => AlignGridTo(x, y));
+        menu.Closed += (_, _) => menu.Dispose();
+        menu.Show(this, screen);
+    }
+
+    private ReferencePoint? HitReference(Point screen)
+    {
+        ReferencePoint? best = null;
+        double bestDistance = SnapPointHelper.DefaultPickRadiusScreenPx;
+        foreach (ReferencePoint point in Document.ReferencePoints)
+        {
+            PointF marker = ImageToScreen(point.X_mm, point.Y_mm);
+            double dx = marker.X - screen.X;
+            double dy = marker.Y - screen.Y;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                best = point;
+            }
+        }
+
+        return best;
+    }
+
+    private void DrawTeachGrid(Graphics g)
+    {
+        TeachGridSettings grid = Document.Grid;
+        if (!grid.Enabled || grid.Step_mm <= 0 || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+        {
+            return;
+        }
+
+        GetVisibleWorld(out double minX, out double minY, out double maxX, out double maxY);
+        double step = grid.Step_mm;
+        double screenStep = step * _zoom;
+        int stride = 1;
+        while (screenStep * stride < 8 && stride < 1_000_000)
+        {
+            stride++;
+        }
+
+        double drawStep = step * stride;
+        int i0 = (int)Math.Floor((minX - grid.OriginX_mm) / drawStep) - 1;
+        int i1 = (int)Math.Ceiling((maxX - grid.OriginX_mm) / drawStep) + 1;
+        int j0 = (int)Math.Floor((minY - grid.OriginY_mm) / drawStep) - 1;
+        int j1 = (int)Math.Ceiling((maxY - grid.OriginY_mm) / drawStep) + 1;
+        if (i1 - i0 > 400)
+        {
+            i1 = i0 + 400;
+        }
+
+        if (j1 - j0 > 400)
+        {
+            j1 = j0 + 400;
+        }
+
+        using var minor = new SolidBrush(Color.FromArgb(150, 176, 176, 176));
+        using var major = new SolidBrush(Color.FromArgb(220, 230, 230, 230));
+        for (int i = i0; i <= i1; i++)
+        {
+            double x = grid.OriginX_mm + i * drawStep;
+            bool majorX = IsMajorGridIndex(x, grid.OriginX_mm, step);
+            for (int j = j0; j <= j1; j++)
+            {
+                double y = grid.OriginY_mm + j * drawStep;
+                bool isMajor = majorX && IsMajorGridIndex(y, grid.OriginY_mm, step);
+                PointF screen = ImageToScreen(x, y);
+                float radius = isMajor ? 2.4f : 1.3f;
+                g.FillEllipse(isMajor ? major : minor, screen.X - radius, screen.Y - radius, radius * 2, radius * 2);
+            }
+        }
+    }
+
+    private static bool IsMajorGridIndex(double value, double origin, double step)
+    {
+        double index = (value - origin) / step;
+        double nearest = Math.Round(index);
+        return Math.Abs(index - nearest) < 1e-3 && Math.Abs(nearest % 5) < 1e-3;
+    }
+
+    private void GetVisibleWorld(out double minX, out double minY, out double maxX, out double maxY)
+    {
+        PointF topLeft = ScreenToImage(new Point(0, 0));
+        PointF bottomRight = ScreenToImage(new Point(ClientSize.Width, ClientSize.Height));
+        minX = Math.Min(topLeft.X, bottomRight.X);
+        maxX = Math.Max(topLeft.X, bottomRight.X);
+        minY = Math.Min(topLeft.Y, bottomRight.Y);
+        maxY = Math.Max(topLeft.Y, bottomRight.Y);
+    }
+
+    private void DrawReferencePoints(Graphics g)
+    {
+        using var pen = new Pen(Color.DeepSkyBlue, 2f);
+        using var brush = new SolidBrush(Color.DeepSkyBlue);
+        foreach (ReferencePoint point in Document.ReferencePoints)
+        {
+            PointF screen = ImageToScreen(point.X_mm, point.Y_mm);
+            const float radius = 6f;
+            g.DrawEllipse(pen, screen.X - radius, screen.Y - radius, radius * 2, radius * 2);
+            g.FillEllipse(brush, screen.X - 2, screen.Y - 2, 4, 4);
+            g.DrawString(point.Name, Font, brush, screen.X + 8, screen.Y - 8);
+        }
+    }
 
     private void RaiseDocumentChanged() => DocumentChanged?.Invoke(this, EventArgs.Empty);
     private void RaiseSelectionChanged() => SelectionChanged?.Invoke(this, EventArgs.Empty);

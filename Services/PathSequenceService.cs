@@ -18,6 +18,7 @@ public sealed class SequenceGap
 public static class PathSequenceService
 {
     public const double DefaultGapThresholdPx = 5.0;
+    public const double TeachGapThresholdMm = 0.05;
 
     public static (double X, double Y) GetStartPoint(PathSegment segment) =>
         (segment.X1, segment.Y1);

@@ -30,7 +30,7 @@ public sealed class ExportSettingsDialog : Form
 
     public ProcessDefaults Result { get; private set; } = new();
 
-    public ExportSettingsDialog(ProcessDefaults current, RobotCalibrationFile? calibration)
+    public ExportSettingsDialog(ProcessDefaults current, RobotCalibrationFile? calibration, bool teachWorkspace = false)
     {
         _sourceDefaults = current;
 
@@ -136,10 +136,26 @@ public sealed class ExportSettingsDialog : Form
         _needleR.Value = Clamp(_needleR, (decimal)current.NeedleOffsetR_deg);
         SetNeedleEditorsEnabled(current.UseNeedleOffset);
 
+        if (teachWorkspace)
+        {
+            _modeAbsolute.Enabled = false;
+            _modeFrameOffset.Enabled = false;
+            _modeCalibOffset.Enabled = false;
+            _fovCenterNeedle.Enabled = false;
+            _rotationNone.Enabled = false;
+            _rotation90.Enabled = false;
+            _rotation180.Enabled = false;
+        }
+
         _useNeedleOffset.CheckedChanged += (_, _) =>
             SetNeedleEditorsEnabled(_useNeedleOffset.Checked);
 
         UpdateCalibrationInfo(calibration);
+        if (teachWorkspace)
+        {
+            _calibrationInfo.Text =
+                "Teach project: XY is exported as absolute robot-frame millimeters. Camera rotation and FOV correction stay off. Needle offset is still applied when enabled.";
+        }
         Shown += OnShownAdjustSize;
     }
 

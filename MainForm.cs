@@ -4,7 +4,7 @@ using FanucPathAuthor.Services;
 
 namespace FanucPathAuthor;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private readonly PathCanvas _canvas = new() { Dock = DockStyle.Fill };
     private readonly ListView _segmentList = new()
@@ -96,7 +96,8 @@ public sealed class MainForm : Form
 
     private ToolStripMenuItem? _undoMenuItem;
     private ToolStripMenuItem? _redoMenuItem;
-    private readonly ToolStripStatusLabel _cursorLabel = new() { AutoSize = false, Width = 280, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly ToolStripStatusLabel _cursorLabel = new() { AutoSize = false, Width = 420, TextAlign = ContentAlignment.MiddleLeft };
+    private GroupBox? _frameGroup;
 
     private RobotCalibrationFile? _calibration;
     private string? _calibrationPath;
@@ -119,6 +120,8 @@ public sealed class MainForm : Form
         UpdateUndoMenuState();
         SetActiveTool(DrawTool.Dot);
         RefreshTileList();
+        RefreshTeachPointList();
+        _statusLabel.Text = "Open an FOV image or add teach points to begin.";
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -131,6 +134,7 @@ public sealed class MainForm : Form
     {
         var menu = new MenuStrip();
         menu.Items.Add(CreateMenu("File", [
+            CreateMenuItem("New project", NewProject),
             CreateMenuItem("Load path JSON...", LoadPath),
             CreateMenuItem("Save path JSON...", SavePath),
             CreateMenuItem("Save path JSON as...", SavePathAs),
@@ -153,7 +157,7 @@ public sealed class MainForm : Form
             CreateMenuItem("Clear all segments", ClearSegments)
         ]));
         menu.Items.Add(CreateMenu("View", [
-            CreateMenuItem("Fit image", FitImage),
+            CreateMenuItem("Fit view", FitImage),
             CreateMenuItem("Refresh preview", RefreshWaypointPreview),
             new ToolStripSeparator(),
             CreateMenuItem("Simulate Play", SimulationPlay, Keys.F5),
@@ -208,7 +212,8 @@ public sealed class MainForm : Form
     {
         SetFrameEditorsEnabled(false);
 
-        var group = new GroupBox { Text = "Frame (sensor px)", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        _frameGroup = new GroupBox { Text = "Frame (sensor px)", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        GroupBox group = _frameGroup;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
         layout.Controls.Add(new Label { Text = "Origin X", AutoSize = true }, 0, 0);
         layout.Controls.Add(_frameOriginX, 1, 0);
@@ -303,6 +308,7 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(segmentsPage);
         tabs.TabPages.Add(previewPage);
         tabs.TabPages.Add(BuildTilesTab());
+        tabs.TabPages.Add(BuildTeachTab());
         return tabs;
     }
 
@@ -416,7 +422,13 @@ public sealed class MainForm : Form
         _radioFrameOnly.Enabled = enabled;
         _btnApplyFrame.Enabled = enabled;
         _btnCancelFrame.Enabled = enabled;
-        _btnEditFrame.Enabled = !enabled;
+        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
+        _btnEditFrame.Enabled = !enabled && !teach;
+        _invertFrameY.Enabled = !teach;
+        if (_frameGroup != null)
+        {
+            _frameGroup.Text = teach ? "Frame (robot mm)" : "Frame (sensor px)";
+        }
     }
 
     private void WireEvents()
@@ -432,6 +444,7 @@ public sealed class MainForm : Form
             RefreshSegmentList();
             RefreshWaypointPreview();
             RefreshTileList();
+            RefreshTeachPointList();
             UpdateSimulationUi();
         };
         _canvas.SelectionChanged += (_, _) =>
@@ -442,7 +455,15 @@ public sealed class MainForm : Form
         _canvas.StatusMessage += (_, message) => _statusLabel.Text = message;
         _canvas.UndoStateChanged += (_, _) => UpdateUndoMenuState();
         _canvas.CursorMoved += (_, cursor) =>
+        {
+            if (_canvas.Document.Workspace == WorkspaceKind.Teach)
+            {
+                _cursorLabel.Text = $"XY mm ({cursor.LocalX:0.000}, {cursor.LocalY:0.000})";
+                return;
+            }
+
             _cursorLabel.Text = $"sensor ({cursor.SensorX:F0},{cursor.SensorY:F0})  local ({cursor.LocalX:F0},{cursor.LocalY:F0})";
+        };
         _canvas.FrameOriginPicked += (_, pick) => OnFrameOriginPicked(pick.SensorX, pick.SensorY);
 
         _frameOriginX.ValueChanged += (_, _) => OnFrameDraftChanged();
@@ -654,6 +675,11 @@ public sealed class MainForm : Form
 
     private void OpenAnchorImage()
     {
+        if (!EnsureWorkspace(WorkspaceKind.Cv))
+        {
+            return;
+        }
+
         using var dialog = new OpenFileDialog
         {
             Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff|All files|*.*"
@@ -668,6 +694,11 @@ public sealed class MainForm : Form
 
     private void TryAddFovImage()
     {
+        if (!EnsureWorkspace(WorkspaceKind.Cv))
+        {
+            return;
+        }
+
         PathDocument document = _canvas.Document;
         if (document.Tiles.Count == 1 && !document.FrameIsDefined)
         {
@@ -696,6 +727,7 @@ public sealed class MainForm : Form
     private void LoadImageIntoDocument(string imagePath, bool isAdditionalFov)
     {
         PathDocument document = _canvas.Document;
+        WorkspaceGuard.Adopt(document, WorkspaceKind.Cv);
         if (!isAdditionalFov && document.Tiles.Count == 0)
         {
             FovTile tile = TileDocumentHelper.AddTile(document, imagePath);
@@ -820,7 +852,8 @@ public sealed class MainForm : Form
     {
         using var dialog = new ExportSettingsDialog(
             _canvas.Document.Defaults,
-            _calibration);
+            _calibration,
+            _canvas.Document.Workspace == WorkspaceKind.Teach);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return false;
@@ -852,6 +885,17 @@ public sealed class MainForm : Form
 
     private void LoadCalibration(object? sender, EventArgs e)
     {
+        if (_canvas.Document.Workspace == WorkspaceKind.Teach)
+        {
+            MessageBox.Show(
+                this,
+                "A Teach project already uses robot millimeters. Calibration is not applied.",
+                "Load calibration",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
         using var dialog = new OpenFileDialog
         {
             Filter =
@@ -904,7 +948,8 @@ public sealed class MainForm : Form
 
     private void ExportLs(object? sender, EventArgs e)
     {
-        if (_calibration?.PixelToRobot == null)
+        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
+        if (!teach && _calibration?.PixelToRobot == null)
         {
             MessageBox.Show(this, "Load a calibration JSON file first.", "Export .LS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -915,7 +960,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (_canvas.Document.Defaults.CoordinateMode != ExportCoordinateMode.UframeAbsolute)
+        if (!teach && _canvas.Document.Defaults.CoordinateMode != ExportCoordinateMode.UframeAbsolute)
         {
             MessageBox.Show(
                 this,
@@ -945,7 +990,12 @@ public sealed class MainForm : Form
 
         try
         {
-            FanucExporter.ExportLs(waypoints, _calibration, Path.GetFileNameWithoutExtension(dialog.FileName), dialog.FileName);
+            FanucExporter.ExportLs(
+                waypoints,
+                _calibration,
+                Path.GetFileNameWithoutExtension(dialog.FileName),
+                dialog.FileName,
+                applyFrameYReflection: !teach);
             _statusLabel.Text = $"Exported LS: {dialog.FileName}";
         }
         catch (Exception ex)
@@ -984,6 +1034,15 @@ public sealed class MainForm : Form
     private void RefreshWaypointPreview()
     {
         ProcessDefaults defaults = _canvas.Document.Defaults;
+        if (_canvas.Document.Workspace == WorkspaceKind.Teach)
+        {
+            string teachNeedle = defaults.UseNeedleOffset
+                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
+                : "Needle OFF";
+            _previewExportModeLabel.Text = $"Export preview: Teach absolute mm | {teachNeedle}";
+        }
+        else
+        {
         string mode = WaypointExportService.DescribeExportMode(defaults.CoordinateMode);
         string fov = defaults.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
         string camera = WaypointExportService.DescribeLocalRotation(defaults.LocalRotation);
@@ -991,6 +1050,7 @@ public sealed class MainForm : Form
             ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
             : "Needle OFF";
         _previewExportModeLabel.Text = $"Export preview: {mode} | {fov} | {camera} | {needle}";
+        }
 
         _waypointPreview.Items.Clear();
         foreach (RobotWaypoint wp in BuildPreviewWaypoints())
@@ -1027,6 +1087,11 @@ public sealed class MainForm : Form
     {
         int selected = _canvas.SelectedSegmentIndex ?? (
             _segmentList.SelectedIndices.Count > 0 ? _segmentList.SelectedIndices[0] : -1);
+        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
+        double gapThreshold = teach
+            ? PathSequenceService.TeachGapThresholdMm
+            : PathSequenceService.DefaultGapThresholdPx;
+        string gapUnit = teach ? "mm" : "px";
         IReadOnlyList<SequenceGap> gaps = PathSequenceService.AnalyzeGaps(_canvas.Document.Segments);
         _segmentList.Items.Clear();
         for (int i = 0; i < _canvas.Document.Segments.Count; i++)
@@ -1038,8 +1103,8 @@ public sealed class MainForm : Form
             if (i < gaps.Count)
             {
                 SequenceGap gap = gaps[i];
-                item.SubItems.Add(FormatGapDistance(gap.Distance_px));
-                if (gap.HasGap(PathSequenceService.DefaultGapThresholdPx))
+                item.SubItems.Add(FormatGapDistance(gap.Distance_px, gapUnit));
+                if (gap.HasGap(gapThreshold))
                 {
                     item.ForeColor = Color.DarkOrange;
                 }
@@ -1058,16 +1123,16 @@ public sealed class MainForm : Form
             _segmentList.Items[selected].Selected = true;
         }
 
-        UpdateSegmentGapSummary(gaps);
+        UpdateSegmentGapSummary(gaps, gapThreshold, gapUnit);
         UpdateSegmentReorderButtons();
     }
 
-    private static string FormatGapDistance(double distancePx) =>
-        distancePx < 0.05 ? "0 px" : $"{distancePx:F1} px";
+    private static string FormatGapDistance(double distance, string unit) =>
+        distance < 0.0005 ? $"0 {unit}" : unit == "mm" ? $"{distance:0.000} mm" : $"{distance:F1} px";
 
-    private void UpdateSegmentGapSummary(IReadOnlyList<SequenceGap> gaps)
+    private void UpdateSegmentGapSummary(IReadOnlyList<SequenceGap> gaps, double threshold, string unit)
     {
-        int gapCount = gaps.Count(gap => gap.HasGap(PathSequenceService.DefaultGapThresholdPx));
+        int gapCount = gaps.Count(gap => gap.HasGap(threshold));
         if (gaps.Count == 0)
         {
             _segmentGapSummaryLabel.Text = "Sequence: single segment";
@@ -1075,16 +1140,15 @@ public sealed class MainForm : Form
             return;
         }
 
+        string limit = unit == "mm" ? threshold.ToString("0.###") : threshold.ToString("F0");
         if (gapCount == 0)
         {
-            _segmentGapSummaryLabel.Text =
-                $"Sequence: all connected (≤ {PathSequenceService.DefaultGapThresholdPx:F0} px)";
+            _segmentGapSummaryLabel.Text = $"Sequence: all connected (≤ {limit} {unit})";
             _segmentGapSummaryLabel.ForeColor = Color.DimGray;
             return;
         }
 
-        _segmentGapSummaryLabel.Text =
-            $"{gapCount} sequence gap(s) (> {PathSequenceService.DefaultGapThresholdPx:F0} px)";
+        _segmentGapSummaryLabel.Text = $"{gapCount} sequence gap(s) (> {limit} {unit})";
         _segmentGapSummaryLabel.ForeColor = Color.DarkOrange;
     }
 
@@ -1130,6 +1194,11 @@ public sealed class MainForm : Form
         finally
         {
             _updatingUi = false;
+        }
+
+        if (!_frameEditing)
+        {
+            SetFrameEditorsEnabled(false);
         }
     }
 
@@ -1296,6 +1365,24 @@ public sealed class MainForm : Form
     private void UpdateFovModeUi()
     {
         PathDocument document = _canvas.Document;
+        if (document.Workspace == WorkspaceKind.Teach)
+        {
+            _tileModeLabel.Text = "Mode: Teach project";
+            _tileCaptureHint.Text = "This project is Teach. Start a new project to add an FOV image.";
+            if (_tileOpenImageButton != null)
+            {
+                _tileOpenImageButton.Visible = true;
+                _tileOpenImageButton.Enabled = false;
+            }
+
+            if (_tileAddFovButton != null)
+            {
+                _tileAddFovButton.Visible = false;
+            }
+
+            return;
+        }
+
         bool hasTiles = document.Tiles.Count > 0;
         bool multi = TileDocumentHelper.IsMultiFovMode(document);
 
@@ -1306,11 +1393,12 @@ public sealed class MainForm : Form
                 ? document.FrameIsDefined
                     ? "Single FOV mode. You can add another FOV image to switch to multi-FOV mosaic."
                     : "Single FOV mode. Define Frame on the anchor image before adding more FOV images."
-                : "Single FOV mode. Open the anchor image to begin.";
+                : "Open an FOV image to start a CV project, or add teach points to start a Teach project.";
 
         if (_tileOpenImageButton != null)
         {
             _tileOpenImageButton.Visible = !hasTiles;
+            _tileOpenImageButton.Enabled = true;
         }
 
         if (_tileAddFovButton != null)
@@ -1501,7 +1589,9 @@ public sealed class MainForm : Form
 
     private void TryLoadCalibrationFromDocument(PathDocument document)
     {
-        if (string.IsNullOrWhiteSpace(document.CalibrationPath) || !File.Exists(document.CalibrationPath))
+        if (document.Workspace == WorkspaceKind.Teach ||
+            string.IsNullOrWhiteSpace(document.CalibrationPath) ||
+            !File.Exists(document.CalibrationPath))
         {
             return;
         }

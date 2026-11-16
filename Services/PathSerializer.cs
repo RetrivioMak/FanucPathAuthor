@@ -30,12 +30,19 @@ public static class PathSerializer
         using JsonDocument jsonDocument = JsonDocument.Parse(json);
         PathDocument? document = JsonSerializer.Deserialize<PathDocument>(json, Options);
         document ??= new PathDocument();
+        bool workspaceSpecified = jsonDocument.RootElement.TryGetProperty("workspace", out _);
         if (jsonDocument.RootElement.TryGetProperty("defaults", out JsonElement defaultsElement))
         {
             ExportSettingsLegacyMigration.ApplyLocalRotation(defaultsElement, document.Defaults);
         }
 
         PathDocumentMigration.Migrate(document);
+        if (!workspaceSpecified)
+        {
+            document.Workspace = WorkspaceKind.Cv;
+            document.SchemaVersion = Math.Max(document.SchemaVersion, 4);
+        }
+
         return document;
     }
 }

@@ -9,6 +9,21 @@ public enum SegmentKind
     Arc
 }
 
+public enum WorkspaceKind
+{
+    Unset,
+    Cv,
+    Teach
+}
+
+public enum LengthUnit
+{
+    Micrometer,
+    Millimeter,
+    Centimeter,
+    Meter
+}
+
 public sealed class FrameDefinition
 {
     public double OriginX_px { get; set; }
@@ -98,22 +113,61 @@ public sealed class PathSegment
     public string DisplayName =>
         Kind switch
         {
-            SegmentKind.Dot => $"Dot ({X1:F0}, {Y1:F0})",
-            SegmentKind.Line => $"Line ({X1:F0},{Y1:F0})->({X2:F0},{Y2:F0})",
-            SegmentKind.Arc => $"Arc ({X1:F0},{Y1:F0})->({X3:F0},{Y3:F0})",
+            SegmentKind.Dot => $"Dot ({X1:0.###}, {Y1:0.###})",
+            SegmentKind.Line => $"Line ({X1:0.###},{Y1:0.###})->({X2:0.###},{Y2:0.###})",
+            SegmentKind.Arc => $"Arc ({X1:0.###},{Y1:0.###})->({X3:0.###},{Y3:0.###})",
             _ => Kind.ToString()
+        };
+}
+
+public sealed class ReferencePoint
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+    public double X_mm { get; set; }
+    public double Y_mm { get; set; }
+
+    public ReferencePoint Clone() =>
+        new()
+        {
+            Id = Id,
+            Name = Name,
+            X_mm = X_mm,
+            Y_mm = Y_mm
+        };
+}
+
+public sealed class TeachGridSettings
+{
+    public bool Enabled { get; set; } = true;
+    public double Step_mm { get; set; } = 0.2;
+    public double OriginX_mm { get; set; }
+    public double OriginY_mm { get; set; }
+    public bool IsAligned { get; set; }
+
+    public TeachGridSettings Clone() =>
+        new()
+        {
+            Enabled = Enabled,
+            Step_mm = Step_mm,
+            OriginX_mm = OriginX_mm,
+            OriginY_mm = OriginY_mm,
+            IsAligned = IsAligned
         };
 }
 
 public sealed class PathDocument
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
+    public WorkspaceKind Workspace { get; set; } = WorkspaceKind.Unset;
     public string? ImagePath { get; set; }
     public string? CalibrationPath { get; set; }
     public string? ActiveTileId { get; set; }
     public FrameDefinition Frame { get; set; } = new();
     public bool FrameIsDefined { get; set; }
     public ProcessDefaults Defaults { get; set; } = new();
+    public TeachGridSettings Grid { get; set; } = new();
+    public List<ReferencePoint> ReferencePoints { get; set; } = new();
     public List<FovTile> Tiles { get; set; } = new();
     public List<PathSegment> Segments { get; set; } = new();
 }

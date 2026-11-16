@@ -179,7 +179,7 @@ public static class PointEditHelper
         }
 
         IReadOnlyList<(int SegmentIndex, int PointSlot)> bindings =
-            FindBindingsAt(document.Segments, localX, localY);
+            FindBindingsAt(document, localX, localY);
 
         return new VertexPick
         {
@@ -191,19 +191,20 @@ public static class PointEditHelper
     }
 
     private static IReadOnlyList<(int SegmentIndex, int PointSlot)> FindBindingsAt(
-        IReadOnlyList<PathSegment> segments,
+        PathDocument document,
         double localX,
         double localY)
     {
+        double tolerance = document.Workspace == WorkspaceKind.Teach ? 1e-4 : PointTolerance;
         var bindings = new List<(int SegmentIndex, int PointSlot)>();
-        for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+        for (int segmentIndex = 0; segmentIndex < document.Segments.Count; segmentIndex++)
         {
-            PathSegment segment = segments[segmentIndex];
+            PathSegment segment = document.Segments[segmentIndex];
             foreach (int pointSlot in GetPointSlots(segment.Kind))
             {
                 (double pointX, double pointY) = GetPoint(segment, pointSlot);
-                if (Math.Abs(pointX - localX) <= PointTolerance &&
-                    Math.Abs(pointY - localY) <= PointTolerance)
+                if (Math.Abs(pointX - localX) <= tolerance &&
+                    Math.Abs(pointY - localY) <= tolerance)
                 {
                     bindings.Add((segmentIndex, pointSlot));
                 }
@@ -454,7 +455,8 @@ public static class PointEditHelper
         Math.Abs(x1 - x2) <= PointTolerance && Math.Abs(y1 - y2) <= PointTolerance;
 
     private static bool PointOnCircle(double x, double y, double centerX, double centerY, double radius) =>
-        Math.Abs(Math.Sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY)) - radius) <= 1.0;
+        Math.Abs(Math.Sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY)) - radius) <=
+        Math.Max(1e-4, radius * 1e-3);
 
     private static double ScreenDistance(PointF a, PointF b)
     {

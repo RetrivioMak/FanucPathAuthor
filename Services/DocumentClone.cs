@@ -8,12 +8,15 @@ public static class DocumentClone
         new()
         {
             SchemaVersion = source.SchemaVersion,
+            Workspace = source.Workspace,
             ImagePath = source.ImagePath,
             CalibrationPath = source.CalibrationPath,
             ActiveTileId = source.ActiveTileId,
             Frame = source.Frame.Clone(),
             FrameIsDefined = source.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(source.Defaults),
+            Grid = source.Grid.Clone(),
+            ReferencePoints = source.ReferencePoints.Select(static point => point.Clone()).ToList(),
             Tiles = source.Tiles.Select(CloneTile).ToList(),
             Segments = source.Segments.Select(CloneSegment).ToList()
         };

@@ -36,7 +36,8 @@ public static class FanucExporter
         IReadOnlyList<RobotWaypoint> waypoints,
         RobotCalibrationFile? calibration,
         string programName,
-        string filePath)
+        string filePath,
+        bool applyFrameYReflection = true)
     {
         IReadOnlyList<RobotWaypoint> exportWaypoints = FilterExportWaypoints(waypoints);
         if (exportWaypoints.Count == 0)
@@ -83,7 +84,9 @@ public static class FanucExporter
         // eVision local +Y is clockwise from +X. Fanuc UF +Y is counterclockwise.
         // Reflect only that Y axis about the frame origin; leave X, R, and UF as computed.
         // A collinear path does not define Y, so its positions are written unchanged.
-        (double X, double Y)[]? frameInverted = InvertFrameY(exportWaypoints);
+        (double X, double Y)[]? frameInverted = applyFrameYReflection
+            ? InvertFrameY(exportWaypoints)
+            : null;
         for (int i = 0; i < exportWaypoints.Count; i++)
         {
             RobotWaypoint wp = exportWaypoints[i];

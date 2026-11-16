@@ -6,7 +6,9 @@ public static class SnapPointHelper
 {
     public const double DefaultPickRadiusScreenPx = 18;
 
-    public static IReadOnlyList<(double SensorX, double SensorY)> CollectSensorPoints(PathDocument document)
+    public static IReadOnlyList<(double SensorX, double SensorY)> CollectSensorPoints(
+        PathDocument document,
+        double uniqueTolerance = 0.5)
     {
         var points = new List<(double SensorX, double SensorY)>();
         foreach (PathSegment segment in document.Segments)
@@ -14,7 +16,7 @@ public static class SnapPointHelper
             foreach ((double localX, double localY) in GeometryHelper.ExpandSegment(segment))
             {
                 var sensor = CoordinateTransform.LocalToSensor(localX, localY, document.Frame);
-                AddUnique(points, sensor.X, sensor.Y);
+                AddUnique(points, sensor.X, sensor.Y, uniqueTolerance);
             }
         }
 
@@ -23,7 +25,8 @@ public static class SnapPointHelper
 
     public static IReadOnlyList<(double SensorX, double SensorY)> CollectSensorPointsExcluding(
         PathDocument document,
-        IEnumerable<(double LocalX, double LocalY)> excludeLocal)
+        IEnumerable<(double LocalX, double LocalY)> excludeLocal,
+        double uniqueTolerance = 0.5)
     {
         var exclude = excludeLocal.ToList();
         var points = new List<(double SensorX, double SensorY)>();
@@ -31,13 +34,13 @@ public static class SnapPointHelper
         {
             foreach ((double localX, double localY) in GeometryHelper.ExpandSegment(segment))
             {
-                if (IsExcluded(exclude, localX, localY))
+                if (IsExcluded(exclude, localX, localY, uniqueTolerance))
                 {
                     continue;
                 }
 
                 var sensor = CoordinateTransform.LocalToSensor(localX, localY, document.Frame);
-                AddUnique(points, sensor.X, sensor.Y);
+                AddUnique(points, sensor.X, sensor.Y, uniqueTolerance);
             }
         }
 
@@ -102,11 +105,15 @@ public static class SnapPointHelper
         return found;
     }
 
-    private static void AddUnique(List<(double SensorX, double SensorY)> points, double sensorX, double sensorY)
+    private static void AddUnique(
+        List<(double SensorX, double SensorY)> points,
+        double sensorX,
+        double sensorY,
+        double tolerance)
     {
         foreach ((double x, double y) in points)
         {
-            if (Math.Abs(x - sensorX) < 0.5 && Math.Abs(y - sensorY) < 0.5)
+            if (Math.Abs(x - sensorX) < tolerance && Math.Abs(y - sensorY) < tolerance)
             {
                 return;
             }
@@ -118,11 +125,12 @@ public static class SnapPointHelper
     private static bool IsExcluded(
         IReadOnlyList<(double LocalX, double LocalY)> excludeLocal,
         double localX,
-        double localY)
+        double localY,
+        double tolerance)
     {
         foreach ((double excludeX, double excludeY) in excludeLocal)
         {
-            if (Math.Abs(excludeX - localX) < 0.5 && Math.Abs(excludeY - localY) < 0.5)
+            if (Math.Abs(excludeX - localX) <= tolerance && Math.Abs(excludeY - localY) <= tolerance)
             {
                 return true;
             }

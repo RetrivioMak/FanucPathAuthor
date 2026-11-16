@@ -70,6 +70,11 @@ public static class GeometryHelper
         PathDocument document,
         RobotCalibrationFile? calibration)
     {
+        if (document.Workspace == WorkspaceKind.Teach)
+        {
+            return BuildTeachWaypoints(document);
+        }
+
         var waypoints = new List<RobotWaypoint>();
         int index = 1;
 
@@ -129,10 +134,81 @@ public static class GeometryHelper
         return waypoints;
     }
 
+    private static IReadOnlyList<RobotWaypoint> BuildTeachWaypoints(PathDocument document)
+    {
+        var waypoints = new List<RobotWaypoint>();
+        int index = 1;
+        foreach (PathSegment segment in document.Segments)
+        {
+            string[] roles = segment.Kind switch
+            {
+                SegmentKind.Dot => ["dot"],
+                SegmentKind.Line => ["start", "end"],
+                SegmentKind.Arc => ["start", "mid", "end"],
+                _ => []
+            };
+
+            int roleIndex = 0;
+            foreach ((double localX, double localY) in ExpandSegment(segment))
+            {
+                WaypointExportValues values = TeachWaypointExport.Compute(localX, localY, document.Defaults);
+                waypoints.Add(new RobotWaypoint
+                {
+                    Index = index++,
+                    SegmentLabel = segment.DisplayName,
+                    Role = roles[roleIndex++],
+                    LocalX_px = localX,
+                    LocalY_px = localY,
+                    SensorX_px = localX,
+                    SensorY_px = localY,
+                    ExportX_mm = values.ExportX_mm,
+                    ExportY_mm = values.ExportY_mm,
+                    ExportR_deg = values.ExportR_deg,
+                    RobotX_mm = values.ExportX_mm,
+                    RobotY_mm = values.ExportY_mm,
+                    R_deg = values.ExportR_deg,
+                    Z_mm = document.Defaults.Z_mm,
+                    W_deg = document.Defaults.W_deg,
+                    P_deg = document.Defaults.P_deg,
+                    Speed_mm_s = segment.Speed_mm_s,
+                    GlueOn = segment.GlueOn
+                });
+            }
+        }
+
+        return waypoints;
+    }
+
     public static RobotWaypoint BuildFrameOriginPreviewWaypoint(
         PathDocument document,
         RobotCalibrationFile? calibration)
     {
+        if (document.Workspace == WorkspaceKind.Teach)
+        {
+            WaypointExportValues values = TeachWaypointExport.Compute(0, 0, document.Defaults);
+            return new RobotWaypoint
+            {
+                Index = 0,
+                SegmentLabel = "Frame origin",
+                Role = "Frame",
+                LocalX_px = 0,
+                LocalY_px = 0,
+                SensorX_px = 0,
+                SensorY_px = 0,
+                ExportX_mm = values.ExportX_mm,
+                ExportY_mm = values.ExportY_mm,
+                ExportR_deg = values.ExportR_deg,
+                RobotX_mm = values.ExportX_mm,
+                RobotY_mm = values.ExportY_mm,
+                R_deg = values.ExportR_deg,
+                Z_mm = document.Defaults.Z_mm,
+                W_deg = document.Defaults.W_deg,
+                P_deg = document.Defaults.P_deg,
+                GlueOn = false,
+                IsPreviewOnly = true
+            };
+        }
+
         double exportX = double.NaN;
         double exportY = double.NaN;
         double exportR = double.NaN;
