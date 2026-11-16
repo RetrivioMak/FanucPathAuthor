@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text.Json;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 using Xunit;
@@ -156,14 +157,20 @@ public class TeachModeTests : IDisposable
             FrameIsDefined = true,
             Defaults = new ProcessDefaults
             {
-                R_deg = 12,
-                CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
-                UseFovCenterNeedleOffset = true,
-                LocalRotation = ExportLocalRotation.Degree180,
-                UseNeedleOffset = true,
-                NeedleOffsetX_mm = 1,
-                NeedleOffsetY_mm = -2,
-                NeedleOffsetR_deg = 3
+                R_deg = 12
+            },
+            Exporters = new ExporterSettings
+            {
+                FanucLs = new FanucLsSettings
+                {
+                    CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
+                    UseFovCenterNeedleOffset = true,
+                    LocalRotation = ExportLocalRotation.Degree180,
+                    UseNeedleOffset = true,
+                    NeedleOffsetX_mm = 1,
+                    NeedleOffsetY_mm = -2,
+                    NeedleOffsetR_deg = 3
+                }
             }
         };
         document.Segments.Add(new PathSegment { Kind = SegmentKind.Dot, X1 = 10, Y1 = 4, GlueOn = true });
@@ -247,6 +254,36 @@ public class TeachModeTests : IDisposable
         Assert.Equal("cal.json", session.CalibrationPath);
         session.Require(WorkspaceKind.Teach);
         Assert.Throws<InvalidOperationException>(() => session.Require(WorkspaceKind.Cv));
+    }
+
+    [Fact]
+    public void Load_LegacyFanucDefaults_MoveIntoFanucSection()
+    {
+        PathDocument document = PathSerializer.LoadFromJson("""
+            {
+              "schemaVersion": 4,
+              "workspace": "cv",
+              "defaults": {
+                "z_mm": 8,
+                "coordinateMode": "uframeAbsolute",
+                "localRotation": "none",
+                "useNeedleOffset": true,
+                "needleOffsetX_mm": 1.5
+              }
+            }
+            """);
+
+        Assert.Equal(8, document.Defaults.Z_mm);
+        Assert.Equal(ExportCoordinateMode.UframeAbsolute, document.Exporters.FanucLs.CoordinateMode);
+        Assert.Equal(ExportLocalRotation.None, document.Exporters.FanucLs.LocalRotation);
+        Assert.True(document.Exporters.FanucLs.UseNeedleOffset);
+        Assert.Equal(1.5, document.Exporters.FanucLs.NeedleOffsetX_mm, 3);
+
+        using JsonDocument saved = JsonDocument.Parse(PathSerializer.ToJson(document));
+        Assert.False(saved.RootElement.GetProperty("defaults").TryGetProperty("coordinateMode", out _));
+        Assert.Equal(
+            "uframeAbsolute",
+            saved.RootElement.GetProperty("exporters").GetProperty("fanuc-ls").GetProperty("coordinateMode").GetString());
     }
 
     private string Write(string json)

@@ -9,7 +9,7 @@ public static class PathDocumentMigration
         if (document.SchemaVersion < 3)
         {
             document.SchemaVersion = 3;
-            document.Defaults.LocalRotation = ExportLocalRotation.Degree180;
+            document.Exporters.FanucLs.LocalRotation = ExportLocalRotation.Degree180;
         }
 
         if (document.SchemaVersion < 4)

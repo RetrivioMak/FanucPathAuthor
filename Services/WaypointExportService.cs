@@ -35,14 +35,14 @@ public static class WaypointExportService
         double localY,
         FrameDefinition frame,
         RobotCalibrationFile calibration,
-        ProcessDefaults defaults)
+        FanucLsSettings fanuc)
     {
         PixelToRobotCoeffs coeffs = calibration.PixelToRobot
             ?? throw new InvalidOperationException("Calibration has no pixelToRobot coefficients.");
 
         double angleDeg = frame.AngleDeg;
         (double sensorX, double sensorY) = CoordinateTransform.LocalToSensor(localX, localY, frame, angleDeg);
-        (double baseX, double baseY) = ComputeBaseRobotMm(sensorX, sensorY, calibration, defaults, coeffs);
+        (double baseX, double baseY) = ComputeBaseRobotMm(sensorX, sensorY, calibration, fanuc, coeffs);
         (double exportX, double exportY) = ApplyExportMode(
             baseX,
             baseY,
@@ -50,7 +50,7 @@ public static class WaypointExportService
             localY,
             frame,
             calibration,
-            defaults,
+            fanuc,
             coeffs,
             angleDeg);
 
@@ -59,12 +59,12 @@ public static class WaypointExportService
             (exportX, exportY) = ToFanucFrameMillimeters(localX, localY, frame, coeffs);
         }
 
-        (exportX, exportY) = ApplyExportPlaneRotation(exportX, exportY, defaults.LocalRotation);
+        (exportX, exportY) = ApplyExportPlaneRotation(exportX, exportY, fanuc.LocalRotation);
 
         double exportR = ResolveExportR_deg(calibration);
-        if (defaults.UseNeedleOffset)
+        if (fanuc.UseNeedleOffset)
         {
-            exportR += defaults.NeedleOffsetR_deg;
+            exportR += fanuc.NeedleOffsetR_deg;
         }
 
         return new WaypointExportValues(exportX, exportY, exportR, sensorX, sensorY);
@@ -77,11 +77,11 @@ public static class WaypointExportService
         double localY,
         FrameDefinition frame,
         RobotCalibrationFile calibration,
-        ProcessDefaults defaults,
+        FanucLsSettings fanuc,
         PixelToRobotCoeffs coeffs,
         double angleDeg)
     {
-        return defaults.CoordinateMode switch
+        return fanuc.CoordinateMode switch
         {
             ExportCoordinateMode.UframeAbsolute => (baseX, baseY),
             ExportCoordinateMode.OffsetFromCalibrationRef => (
@@ -94,10 +94,10 @@ public static class WaypointExportService
                 localY,
                 frame,
                 calibration,
-                defaults,
+                fanuc,
                 coeffs,
                 angleDeg),
-            _ => throw new InvalidOperationException($"Unknown export coordinate mode: {defaults.CoordinateMode}")
+            _ => throw new InvalidOperationException($"Unknown export coordinate mode: {fanuc.CoordinateMode}")
         };
     }
 
@@ -108,7 +108,7 @@ public static class WaypointExportService
         double localY,
         FrameDefinition frame,
         RobotCalibrationFile calibration,
-        ProcessDefaults defaults,
+        FanucLsSettings fanuc,
         PixelToRobotCoeffs coeffs,
         double angleDeg)
     {
@@ -122,7 +122,7 @@ public static class WaypointExportService
             originSensorX,
             originSensorY,
             calibration,
-            defaults,
+            fanuc,
             coeffs);
 
         return (baseX - frameBaseX, baseY - frameBaseY);
@@ -157,7 +157,7 @@ public static class WaypointExportService
         double sensorX,
         double sensorY,
         RobotCalibrationFile calibration,
-        ProcessDefaults defaults,
+        FanucLsSettings fanuc,
         PixelToRobotCoeffs coeffs)
     {
         (double transformedX, double transformedY) = coeffs.Transform(sensorX, sensorY);
@@ -168,7 +168,7 @@ public static class WaypointExportService
         double robotX = calibration.ReferenceRobotX_mm + transformedX - referencePixelRobotX;
         double robotY = calibration.ReferenceRobotY_mm + transformedY - referencePixelRobotY;
 
-        if (defaults.UseFovCenterNeedleOffset &&
+        if (fanuc.UseFovCenterNeedleOffset &&
             calibration.FrameWidth > 0 &&
             calibration.FrameHeight > 0)
         {
@@ -179,10 +179,10 @@ public static class WaypointExportService
             robotY -= fovCenterRobotY - referencePixelRobotY;
         }
 
-        if (defaults.UseNeedleOffset)
+        if (fanuc.UseNeedleOffset)
         {
-            robotX += defaults.NeedleOffsetX_mm;
-            robotY += defaults.NeedleOffsetY_mm;
+            robotX += fanuc.NeedleOffsetX_mm;
+            robotY += fanuc.NeedleOffsetY_mm;
         }
 
         return (robotX, robotY);

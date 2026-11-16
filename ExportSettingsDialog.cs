@@ -24,13 +24,20 @@ public partial class ExportSettingsDialog : Form
     private readonly NumericUpDown _needleX;
     private readonly NumericUpDown _needleY;
     private readonly NumericUpDown _needleR;
+    private readonly NumericUpDown _userFrame;
+    private readonly NumericUpDown _userTool;
     private readonly Label _calibrationInfo;
     private TableLayoutPanel? _root;
     private readonly List<GroupBox> _sectionGroups = new();
 
     public ProcessDefaults Result { get; private set; } = new();
+    public FanucLsSettings FanucResult { get; private set; } = new();
 
-    public ExportSettingsDialog(ProcessDefaults current, RobotCalibrationFile? calibration, bool teachWorkspace = false)
+    public ExportSettingsDialog(
+        ProcessDefaults current,
+        FanucLsSettings fanuc,
+        RobotCalibrationFile? calibration,
+        bool teachWorkspace = false)
     {
         _sourceDefaults = current;
 
@@ -95,6 +102,8 @@ public partial class ExportSettingsDialog : Form
         _needleX = CreateNumeric(-5000, 5000, 0.001m, 3);
         _needleY = CreateNumeric(-5000, 5000, 0.001m, 3);
         _needleR = CreateNumeric(-360, 360, 0.1m, 2);
+        _userFrame = CreateNumeric(0, 255, 1, 0);
+        _userTool = CreateNumeric(0, 255, 1, 0);
 
         _calibrationInfo = HintLabel(string.Empty, ContentWidth - 48);
         _calibrationInfo.Margin = new Padding(0, 4, 0, 0);
@@ -109,7 +118,7 @@ public partial class ExportSettingsDialog : Form
                                     calibration!.FrameWidth > 0 &&
                                     calibration.FrameHeight > 0;
 
-        switch (current.CoordinateMode)
+        switch (fanuc.CoordinateMode)
         {
             case ExportCoordinateMode.UframeAbsolute:
                 _modeAbsolute.Checked = true;
@@ -127,13 +136,15 @@ public partial class ExportSettingsDialog : Form
             _modeAbsolute.Checked = true;
         }
 
-        _fovCenterNeedle.Checked = current.UseFovCenterNeedleOffset;
-        SetLocalRotationSelection(current.LocalRotation);
-        _useNeedleOffset.Checked = current.UseNeedleOffset;
-        _needleX.Value = Clamp(_needleX, (decimal)current.NeedleOffsetX_mm);
-        _needleY.Value = Clamp(_needleY, (decimal)current.NeedleOffsetY_mm);
-        _needleR.Value = Clamp(_needleR, (decimal)current.NeedleOffsetR_deg);
-        SetNeedleEditorsEnabled(current.UseNeedleOffset);
+        _fovCenterNeedle.Checked = fanuc.UseFovCenterNeedleOffset;
+        SetLocalRotationSelection(fanuc.LocalRotation);
+        _useNeedleOffset.Checked = fanuc.UseNeedleOffset;
+        _needleX.Value = Clamp(_needleX, (decimal)fanuc.NeedleOffsetX_mm);
+        _needleY.Value = Clamp(_needleY, (decimal)fanuc.NeedleOffsetY_mm);
+        _needleR.Value = Clamp(_needleR, (decimal)fanuc.NeedleOffsetR_deg);
+        _userFrame.Value = fanuc.UserFrame ?? FanucFrameNumbers.Parse(calibration?.RobotFrame, 1);
+        _userTool.Value = fanuc.UserTool ?? FanucFrameNumbers.Parse(calibration?.RobotTool, 1);
+        SetNeedleEditorsEnabled(fanuc.UseNeedleOffset);
 
         if (teachWorkspace)
         {
@@ -222,8 +233,9 @@ public partial class ExportSettingsDialog : Form
 
     private GroupBox BuildModeGroup()
     {
-        var layout = CreateSectionLayout(6);
+        var layout = CreateSectionLayout(7);
         int row = 0;
+        layout.Controls.Add(BuildFrameNumberRow(), 0, row++);
         layout.Controls.Add(_modeAbsolute, 0, row++);
         layout.Controls.Add(HintLabel(
             "Export XY = absolute UFRAME mm after FOV and needle corrections.",
@@ -238,6 +250,31 @@ public partial class ExportSettingsDialog : Form
             ContentWidth - 48), 0, row);
 
         return WrapGroupBox("UFRAME / UTOOL and offsets", layout);
+    }
+
+    private Control BuildFrameNumberRow()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        panel.Controls.Add(new Label
+        {
+            Text = "User frame",
+            AutoSize = true,
+            Padding = new Padding(0, 6, 8, 0)
+        });
+        panel.Controls.Add(_userFrame);
+        panel.Controls.Add(new Label
+        {
+            Text = "User tool",
+            AutoSize = true,
+            Padding = new Padding(16, 6, 8, 0)
+        });
+        panel.Controls.Add(_userTool);
+        return panel;
     }
 
     private GroupBox BuildFovGroup()
@@ -459,14 +496,19 @@ public partial class ExportSettingsDialog : Form
             P_deg = _sourceDefaults.P_deg,
             R_deg = _sourceDefaults.R_deg,
             Speed_mm_s = _sourceDefaults.Speed_mm_s,
-            GlueOn = _sourceDefaults.GlueOn,
+            GlueOn = _sourceDefaults.GlueOn
+        };
+        FanucResult = new FanucLsSettings
+        {
             CoordinateMode = mode,
             UseFovCenterNeedleOffset = _fovCenterNeedle.Checked,
             LocalRotation = ReadLocalRotationSelection(),
             UseNeedleOffset = _useNeedleOffset.Checked,
             NeedleOffsetX_mm = (double)_needleX.Value,
             NeedleOffsetY_mm = (double)_needleY.Value,
-            NeedleOffsetR_deg = (double)_needleR.Value
+            NeedleOffsetR_deg = (double)_needleR.Value,
+            UserFrame = (int)_userFrame.Value,
+            UserTool = (int)_userTool.Value
         };
     }
 

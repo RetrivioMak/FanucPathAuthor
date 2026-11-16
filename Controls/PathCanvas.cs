@@ -420,6 +420,7 @@ public sealed class PathCanvas : Control
             Frame = Document.Frame.Clone(),
             FrameIsDefined = Document.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(Document.Defaults),
+            Exporters = Document.Exporters.Clone(),
             Grid = Document.Grid.Clone(),
             ReferencePoints = Document.ReferencePoints.Select(static point => point.Clone()).ToList(),
             Tiles = Document.Tiles.Select(DocumentClone.CloneTile).ToList(),
@@ -1605,6 +1606,7 @@ public sealed class PathCanvas : Control
             Document.Frame = snapshot.Frame.Clone();
             Document.FrameIsDefined = snapshot.FrameIsDefined;
             Document.Defaults = ProcessDefaultsCopy.Clone(snapshot.Defaults);
+            Document.Exporters = snapshot.Exporters.Clone();
             Document.Grid = snapshot.Grid.Clone();
             Document.ReferencePoints.Clear();
             Document.ReferencePoints.AddRange(snapshot.ReferencePoints.Select(static point => point.Clone()));
@@ -1850,6 +1852,7 @@ public sealed class PathCanvas : Control
     public void ResetProject()
     {
         ProcessDefaults defaults = ProcessDefaultsCopy.Clone(Document.Defaults);
+        ExporterSettings exporters = Document.Exporters.Clone();
         _suppressUndo = true;
         try
         {
@@ -1865,6 +1868,7 @@ public sealed class PathCanvas : Control
             Document.Frame = new FrameDefinition();
             Document.FrameIsDefined = false;
             Document.Defaults = defaults;
+            Document.Exporters = exporters;
             Document.Grid = new TeachGridSettings();
             Document.ReferencePoints.Clear();
             Document.Tiles.Clear();

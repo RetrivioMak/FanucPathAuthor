@@ -103,7 +103,7 @@ public static class GeometryHelper
                         localY,
                         document.Frame,
                         calibration,
-                        document.Defaults);
+                        document.Exporters.FanucLs);
                     exportX = values.ExportX_mm;
                     exportY = values.ExportY_mm;
                     exportR = values.ExportR_deg;
@@ -151,7 +151,11 @@ public static class GeometryHelper
             int roleIndex = 0;
             foreach ((double localX, double localY) in ExpandSegment(segment))
             {
-                WaypointExportValues values = TeachWaypointExport.Compute(localX, localY, document.Defaults);
+                WaypointExportValues values = TeachWaypointExport.Compute(
+                    localX,
+                    localY,
+                    document.Defaults,
+                    document.Exporters.FanucLs);
                 waypoints.Add(new RobotWaypoint
                 {
                     Index = index++,
@@ -185,7 +189,7 @@ public static class GeometryHelper
     {
         if (document.Workspace == WorkspaceKind.Teach)
         {
-            WaypointExportValues values = TeachWaypointExport.Compute(0, 0, document.Defaults);
+            WaypointExportValues values = TeachWaypointExport.Compute(0, 0, document.Defaults, document.Exporters.FanucLs);
             return new RobotWaypoint
             {
                 Index = 0,
@@ -222,7 +226,7 @@ public static class GeometryHelper
                 0,
                 document.Frame,
                 calibration,
-                document.Defaults);
+                document.Exporters.FanucLs);
             exportX = values.ExportX_mm;
             exportY = values.ExportY_mm;
             exportR = values.ExportR_deg;

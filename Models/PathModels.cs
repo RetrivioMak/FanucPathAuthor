@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace DispensePathAuthor.Models;
 
 public enum SegmentKind
@@ -73,27 +71,6 @@ public sealed class ProcessDefaults
     public double R_deg { get; set; } = 0;
     public double Speed_mm_s { get; set; } = 50;
     public bool GlueOn { get; set; } = true;
-
-    public ExportCoordinateMode CoordinateMode { get; set; } = ExportCoordinateMode.OffsetFromCalibrationRef;
-
-    /// <summary>Shift XY so export places the needle at FOV center over the point.</summary>
-    public bool UseFovCenterNeedleOffset { get; set; }
-
-    /// <summary>Rotate exported XY after coordinate mode (None / 90 deg CCW / 180 deg).</summary>
-    public ExportLocalRotation LocalRotation { get; set; } = ExportLocalRotation.Degree180;
-
-    [JsonIgnore]
-    public bool UseFixedCameraInversion
-    {
-        get => LocalRotation == ExportLocalRotation.Degree180;
-        set => LocalRotation = value ? ExportLocalRotation.Degree180 : ExportLocalRotation.None;
-    }
-
-    public bool UseNeedleOffset { get; set; }
-
-    public double NeedleOffsetX_mm { get; set; }
-    public double NeedleOffsetY_mm { get; set; }
-    public double NeedleOffsetR_deg { get; set; }
 }
 
 public sealed class PathSegment
@@ -166,6 +143,7 @@ public sealed class PathDocument
     public FrameDefinition Frame { get; set; } = new();
     public bool FrameIsDefined { get; set; }
     public ProcessDefaults Defaults { get; set; } = new();
+    public ExporterSettings Exporters { get; set; } = new();
     public TeachGridSettings Grid { get; set; } = new();
     public List<ReferencePoint> ReferencePoints { get; set; } = new();
     public List<FovTile> Tiles { get; set; } = new();

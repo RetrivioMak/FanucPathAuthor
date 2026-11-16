@@ -15,6 +15,7 @@ public static class DocumentClone
             Frame = source.Frame.Clone(),
             FrameIsDefined = source.FrameIsDefined,
             Defaults = ProcessDefaultsCopy.Clone(source.Defaults),
+            Exporters = source.Exporters.Clone(),
             Grid = source.Grid.Clone(),
             ReferencePoints = source.ReferencePoints.Select(static point => point.Clone()).ToList(),
             Tiles = source.Tiles.Select(CloneTile).ToList(),

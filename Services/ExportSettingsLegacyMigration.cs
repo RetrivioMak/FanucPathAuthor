@@ -5,7 +5,7 @@ namespace DispensePathAuthor.Services;
 
 public static class ExportSettingsLegacyMigration
 {
-    public static void ApplyLocalRotation(JsonElement settingsElement, ProcessDefaults defaults)
+    public static void ApplyLocalRotation(JsonElement settingsElement, FanucLsSettings fanuc)
     {
         if (settingsElement.TryGetProperty("localRotation", out _))
         {
@@ -18,7 +18,7 @@ public static class ExportSettingsLegacyMigration
             return;
         }
 
-        defaults.LocalRotation = legacy.GetBoolean()
+        fanuc.LocalRotation = legacy.GetBoolean()
             ? ExportLocalRotation.Degree180
             : ExportLocalRotation.None;
     }

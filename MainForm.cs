@@ -78,7 +78,7 @@ public partial class MainForm : Form
         _rightPanel.Controls.Add(resizeGrip);
         FormClosed += (_, _) => _simulation.Dispose();
         WireEvents();
-        ExportSettingsPersistence.TryLoadInto(_canvas.Document.Defaults);
+        ExportSettingsPersistence.TryLoadInto(_canvas.Document.Exporters.FanucLs);
         RefreshSegmentList();
         RefreshWaypointPreview();
         UpdateUndoMenuState();
@@ -95,7 +95,7 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        ExportSettingsPersistence.Save(_canvas.Document.Defaults);
+        ExportSettingsPersistence.Save(_canvas.Document.Exporters.FanucLs);
         base.OnFormClosing(e);
     }
 
@@ -108,7 +108,7 @@ public partial class MainForm : Form
         _loadCalibrationMenuItem.Click += LoadCalibration;
         _exportSettingsMenuItem.Click += OpenExportSettings;
         _exportCsvMenuItem.Click += ExportCsv;
-        _exportLsMenuItem.Click += ExportLs;
+        BuildExporterMenu();
         _undoMenuItem.Click += UndoAction;
         _redoMenuItem.Click += RedoAction;
         _cancelShapeMenuItem.Click += CancelPending;
@@ -562,6 +562,7 @@ public partial class MainForm : Form
     {
         using var dialog = new ExportSettingsDialog(
             _canvas.Document.Defaults,
+            _canvas.Document.Exporters.FanucLs,
             _calibration,
             _canvas.Document.Workspace == WorkspaceKind.Teach);
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -570,6 +571,7 @@ public partial class MainForm : Form
         }
 
         ApplyProcessDefaults(dialog.Result);
+        ApplyFanucSettings(dialog.FanucResult);
         return true;
     }
 
@@ -582,14 +584,13 @@ public partial class MainForm : Form
         target.R_deg = defaults.R_deg;
         target.Speed_mm_s = defaults.Speed_mm_s;
         target.GlueOn = defaults.GlueOn;
-        target.CoordinateMode = defaults.CoordinateMode;
-        target.UseFovCenterNeedleOffset = defaults.UseFovCenterNeedleOffset;
-        target.LocalRotation = defaults.LocalRotation;
-        target.UseNeedleOffset = defaults.UseNeedleOffset;
-        target.NeedleOffsetX_mm = defaults.NeedleOffsetX_mm;
-        target.NeedleOffsetY_mm = defaults.NeedleOffsetY_mm;
-        target.NeedleOffsetR_deg = defaults.NeedleOffsetR_deg;
-        ExportSettingsPersistence.Save(target);
+        RefreshWaypointPreview();
+    }
+
+    private void ApplyFanucSettings(FanucLsSettings fanuc)
+    {
+        _canvas.Document.Exporters.FanucLs = fanuc.Clone();
+        ExportSettingsPersistence.Save(_canvas.Document.Exporters.FanucLs);
         RefreshWaypointPreview();
     }
 
@@ -652,46 +653,34 @@ public partial class MainForm : Form
             return;
         }
 
-        FanucExporter.ExportCsv(waypoints, dialog.FileName);
+        DiagnosticCsv.Write(waypoints, dialog.FileName);
         _statusLabel.Text = $"Exported CSV: {dialog.FileName}";
     }
 
-    private void ExportLs(object? sender, EventArgs e)
+    private void ExportWith(IProgramExporter exporter)
     {
-        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
-        if (!teach && _calibration?.PixelToRobot == null)
-        {
-            MessageBox.Show(this, "Load a calibration JSON file first.", "Export .LS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
         if (!TryApplyExportSettings())
         {
             return;
         }
 
-        if (!teach && _canvas.Document.Defaults.CoordinateMode != ExportCoordinateMode.UframeAbsolute)
+        string? error = exporter.Validate(_canvas.Document, _calibration);
+        if (error != null)
         {
-            MessageBox.Show(
-                this,
-                "Fanuc .LS export requires UFRAME / UTOOL absolute mode. Switch export settings or use CSV for offset modes.",
-                "Export .LS",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            MessageBox.Show(this, error, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
-        var waypoints = BuildExportWaypoints();
-        if (waypoints.Count == 0)
+        if (_canvas.Document.Segments.Count == 0)
         {
-            MessageBox.Show(this, "No segments to export.", "Export .LS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "No segments to export.", exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
         using var dialog = new SaveFileDialog
         {
-            Filter = "Fanuc LS|*.LS;*.ls",
-            FileName = "GLUE_PATH.LS"
+            Filter = exporter.FileFilter,
+            FileName = exporter.DefaultFileName
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
@@ -700,17 +689,36 @@ public partial class MainForm : Form
 
         try
         {
-            FanucExporter.ExportLs(
-                waypoints,
-                _calibration,
-                Path.GetFileNameWithoutExtension(dialog.FileName),
-                dialog.FileName,
-                applyFrameYReflection: !teach);
-            _statusLabel.Text = $"Exported LS: {dialog.FileName}";
+            exporter.Export(new ProgramExportRequest
+            {
+                Document = _canvas.CreateDocumentSnapshot(),
+                Calibration = _calibration,
+                DestinationPath = dialog.FileName
+            });
+            _statusLabel.Text = $"Exported: {dialog.FileName}";
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Export .LS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void BuildExporterMenu()
+    {
+        int index = _fileMenu.DropDownItems.IndexOf(_exportLsMenuItem);
+        _fileMenu.DropDownItems.Remove(_exportLsMenuItem);
+        if (index < 0)
+        {
+            index = _fileMenu.DropDownItems.IndexOf(_exportCsvMenuItem) + 1;
+        }
+
+        foreach (IProgramExporter exporter in ExporterRegistry.Exporters)
+        {
+            IProgramExporter captured = exporter;
+            var item = new ToolStripMenuItem(captured.MenuLabel);
+            item.Click += (_, _) => ExportWith(captured);
+            _fileMenu.DropDownItems.Insert(index, item);
+            index++;
         }
     }
 
@@ -763,22 +771,22 @@ public partial class MainForm : Form
 
     private void RefreshWaypointPreview()
     {
-        ProcessDefaults defaults = _canvas.Document.Defaults;
+        FanucLsSettings fanuc = _canvas.Document.Exporters.FanucLs;
         string summary;
         if (_canvas.Document.Workspace == WorkspaceKind.Teach)
         {
-            string teachNeedle = defaults.UseNeedleOffset
-                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
+            string teachNeedle = fanuc.UseNeedleOffset
+                ? $"Needle ON ({fanuc.NeedleOffsetX_mm:0.###}, {fanuc.NeedleOffsetY_mm:0.###})"
                 : "Needle OFF";
             summary = $"Export preview: Teach absolute mm | {teachNeedle}";
         }
         else
         {
-            string mode = WaypointExportService.DescribeExportMode(defaults.CoordinateMode);
-            string fov = defaults.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
-            string camera = WaypointExportService.DescribeLocalRotation(defaults.LocalRotation);
-            string needle = defaults.UseNeedleOffset
-                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
+            string mode = WaypointExportService.DescribeExportMode(fanuc.CoordinateMode);
+            string fov = fanuc.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
+            string camera = WaypointExportService.DescribeLocalRotation(fanuc.LocalRotation);
+            string needle = fanuc.UseNeedleOffset
+                ? $"Needle ON ({fanuc.NeedleOffsetX_mm:0.###}, {fanuc.NeedleOffsetY_mm:0.###})"
                 : "Needle OFF";
             summary = $"Export preview: {mode} | {fov} | {camera} | {needle}";
         }

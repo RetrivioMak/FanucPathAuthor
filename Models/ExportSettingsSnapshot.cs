@@ -13,27 +13,33 @@ public sealed class ExportSettingsSnapshot
     public double NeedleOffsetX_mm { get; set; }
     public double NeedleOffsetY_mm { get; set; }
     public double NeedleOffsetR_deg { get; set; }
+    public int? UserFrame { get; set; }
+    public int? UserTool { get; set; }
 
-    public static ExportSettingsSnapshot FromProcessDefaults(ProcessDefaults defaults) =>
+    public static ExportSettingsSnapshot FromFanuc(FanucLsSettings fanuc) =>
         new()
         {
-            CoordinateMode = defaults.CoordinateMode,
-            UseFovCenterNeedleOffset = defaults.UseFovCenterNeedleOffset,
-            LocalRotation = defaults.LocalRotation,
-            UseNeedleOffset = defaults.UseNeedleOffset,
-            NeedleOffsetX_mm = defaults.NeedleOffsetX_mm,
-            NeedleOffsetY_mm = defaults.NeedleOffsetY_mm,
-            NeedleOffsetR_deg = defaults.NeedleOffsetR_deg
+            CoordinateMode = fanuc.CoordinateMode,
+            UseFovCenterNeedleOffset = fanuc.UseFovCenterNeedleOffset,
+            LocalRotation = fanuc.LocalRotation,
+            UseNeedleOffset = fanuc.UseNeedleOffset,
+            NeedleOffsetX_mm = fanuc.NeedleOffsetX_mm,
+            NeedleOffsetY_mm = fanuc.NeedleOffsetY_mm,
+            NeedleOffsetR_deg = fanuc.NeedleOffsetR_deg,
+            UserFrame = fanuc.UserFrame,
+            UserTool = fanuc.UserTool
         };
 
-    public void ApplyTo(ProcessDefaults defaults)
+    public void ApplyTo(FanucLsSettings fanuc)
     {
-        defaults.CoordinateMode = CoordinateMode;
-        defaults.UseFovCenterNeedleOffset = UseFovCenterNeedleOffset;
-        defaults.LocalRotation = LocalRotation;
-        defaults.UseNeedleOffset = UseNeedleOffset;
-        defaults.NeedleOffsetX_mm = NeedleOffsetX_mm;
-        defaults.NeedleOffsetY_mm = NeedleOffsetY_mm;
-        defaults.NeedleOffsetR_deg = NeedleOffsetR_deg;
+        fanuc.CoordinateMode = CoordinateMode;
+        fanuc.UseFovCenterNeedleOffset = UseFovCenterNeedleOffset;
+        fanuc.LocalRotation = LocalRotation;
+        fanuc.UseNeedleOffset = UseNeedleOffset;
+        fanuc.NeedleOffsetX_mm = NeedleOffsetX_mm;
+        fanuc.NeedleOffsetY_mm = NeedleOffsetY_mm;
+        fanuc.NeedleOffsetR_deg = NeedleOffsetR_deg;
+        fanuc.UserFrame = UserFrame;
+        fanuc.UserTool = UserTool;
     }
 }

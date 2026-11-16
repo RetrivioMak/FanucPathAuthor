@@ -33,9 +33,10 @@ public static class PathSerializer
         PathDocument? document = JsonSerializer.Deserialize<PathDocument>(json, Options);
         document ??= new PathDocument();
         bool workspaceSpecified = jsonDocument.RootElement.TryGetProperty("workspace", out _);
+        LiftLegacyFanucSettings(jsonDocument.RootElement, document);
         if (jsonDocument.RootElement.TryGetProperty("defaults", out JsonElement defaultsElement))
         {
-            ExportSettingsLegacyMigration.ApplyLocalRotation(defaultsElement, document.Defaults);
+            ExportSettingsLegacyMigration.ApplyLocalRotation(defaultsElement, document.Exporters.FanucLs);
         }
 
         PathDocumentMigration.Migrate(document);
@@ -46,5 +47,27 @@ public static class PathSerializer
         }
 
         return document;
+    }
+
+    private static void LiftLegacyFanucSettings(JsonElement root, PathDocument document)
+    {
+        if (root.TryGetProperty("exporters", out JsonElement exporters) &&
+            exporters.ValueKind == JsonValueKind.Object &&
+            exporters.TryGetProperty("fanuc-ls", out _))
+        {
+            return;
+        }
+
+        if (!root.TryGetProperty("defaults", out JsonElement defaults) ||
+            defaults.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        FanucLsSettings? lifted = JsonSerializer.Deserialize<FanucLsSettings>(defaults.GetRawText(), Options);
+        if (lifted != null)
+        {
+            document.Exporters.FanucLs = lifted;
+        }
     }
 }

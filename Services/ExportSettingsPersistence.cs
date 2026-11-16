@@ -36,7 +36,7 @@ public static class ExportSettingsPersistence
         }
     }
 
-    public static bool TryLoadInto(ProcessDefaults defaults)
+    public static bool TryLoadInto(FanucLsSettings fanuc)
     {
         try
         {
@@ -55,8 +55,8 @@ public static class ExportSettingsPersistence
                 return false;
             }
 
-            snapshot.ApplyTo(defaults);
-            ExportSettingsLegacyMigration.ApplyLocalRotation(document.RootElement, defaults);
+            snapshot.ApplyTo(fanuc);
+            ExportSettingsLegacyMigration.ApplyLocalRotation(document.RootElement, fanuc);
             return true;
         }
         catch
@@ -65,11 +65,11 @@ public static class ExportSettingsPersistence
         }
     }
 
-    public static void Save(ProcessDefaults defaults)
+    public static void Save(FanucLsSettings fanuc)
     {
         try
         {
-            ExportSettingsSnapshot snapshot = ExportSettingsSnapshot.FromProcessDefaults(defaults);
+            ExportSettingsSnapshot snapshot = ExportSettingsSnapshot.FromFanuc(fanuc);
             snapshot.SchemaVersion = CurrentSchemaVersion;
 
             string path = SettingsFilePath;

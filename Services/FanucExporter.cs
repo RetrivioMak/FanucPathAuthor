@@ -8,36 +8,14 @@ public static class FanucExporter
 {
     private const double DefaultLsSpeed_mm_s = 100;
 
-    public static void ExportCsv(IReadOnlyList<RobotWaypoint> waypoints, string filePath)
-    {
-        IReadOnlyList<RobotWaypoint> exportWaypoints = FilterExportWaypoints(waypoints);
-        var sb = new StringBuilder();
-        sb.AppendLine("Index,Role,ExportX_mm,ExportY_mm,ExportR_deg,GlueOn,LocalX_px,LocalY_px,SensorX_px,SensorY_px");
-
-        foreach (RobotWaypoint wp in exportWaypoints)
-        {
-            sb.Append(wp.Index).Append(',')
-                .Append(Escape(wp.Role)).Append(',')
-                .Append(Format(wp.ExportX_mm)).Append(',')
-                .Append(Format(wp.ExportY_mm)).Append(',')
-                .Append(Format(wp.ExportR_deg)).Append(',')
-                .Append(wp.GlueOn ? "1" : "0").Append(',')
-                .Append(Format(wp.LocalX_px)).Append(',')
-                .Append(Format(wp.LocalY_px)).Append(',')
-                .Append(Format(wp.SensorX_px)).Append(',')
-                .Append(Format(wp.SensorY_px))
-                .AppendLine();
-        }
-
-        File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
-    }
-
     public static void ExportLs(
         IReadOnlyList<RobotWaypoint> waypoints,
         RobotCalibrationFile? calibration,
         string programName,
         string filePath,
-        bool applyFrameYReflection = true)
+        bool applyFrameYReflection = true,
+        int? userFrame = null,
+        int? userTool = null)
     {
         IReadOnlyList<RobotWaypoint> exportWaypoints = FilterExportWaypoints(waypoints);
         if (exportWaypoints.Count == 0)
@@ -50,8 +28,8 @@ public static class FanucExporter
             throw new InvalidOperationException("Load RobotCvTransformCalibration.json before exporting .LS.");
         }
 
-        string uf = ParseFrameNumber(calibration?.RobotFrame, defaultNumber: 1);
-        string ut = ParseFrameNumber(calibration?.RobotTool, defaultNumber: 1);
+        string uf = (userFrame ?? FanucFrameNumbers.Parse(calibration?.RobotFrame, 1)).ToString(CultureInfo.InvariantCulture);
+        string ut = (userTool ?? FanucFrameNumbers.Parse(calibration?.RobotTool, 1)).ToString(CultureInfo.InvariantCulture);
         string lsSpeed = $"{Format(DefaultLsSpeed_mm_s)}mm/sec";
 
         var sb = new StringBuilder();
@@ -201,24 +179,6 @@ public static class FanucExporter
     private static IReadOnlyList<RobotWaypoint> FilterExportWaypoints(IReadOnlyList<RobotWaypoint> waypoints) =>
         waypoints.Where(static wp => !wp.IsPreviewOnly).ToList();
 
-    private static string ParseFrameNumber(string? label, int defaultNumber)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return defaultNumber.ToString(CultureInfo.InvariantCulture);
-        }
-
-        int open = label.IndexOf('[', StringComparison.Ordinal);
-        int close = label.IndexOf(']', StringComparison.Ordinal);
-        if (open >= 0 && close > open &&
-            int.TryParse(label.AsSpan(open + 1, close - open - 1), out int number))
-        {
-            return number.ToString(CultureInfo.InvariantCulture);
-        }
-
-        return defaultNumber.ToString(CultureInfo.InvariantCulture);
-    }
-
     private static string SanitizeProgramName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -234,7 +194,4 @@ public static class FanucExporter
         double.IsNaN(value)
             ? string.Empty
             : value.ToString("0.###", CultureInfo.InvariantCulture);
-
-    private static string Escape(string value) =>
-        value.Contains(',') ? $"\"{value}\"" : value;
 }

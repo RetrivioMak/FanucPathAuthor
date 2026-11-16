@@ -272,7 +272,7 @@ public class WaypointExportServiceTests
             OriginY_px = calibration.ReferencePixelY
         };
 
-    private static ProcessDefaults AbsoluteDefaults => new()
+    private static FanucLsSettings AbsoluteDefaults => new()
     {
         CoordinateMode = ExportCoordinateMode.UframeAbsolute,
         LocalRotation = ExportLocalRotation.None
@@ -299,7 +299,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
@@ -321,7 +321,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
@@ -343,7 +343,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             UseFovCenterNeedleOffset = true,
@@ -366,7 +366,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.UframeAbsolute,
             UseFovCenterNeedleOffset = true,
@@ -389,7 +389,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = new FrameDefinition { OriginX_px = 500, OriginY_px = 600 };
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
             LocalRotation = ExportLocalRotation.None
@@ -411,7 +411,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             UseNeedleOffset = true,
@@ -436,12 +436,12 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800 };
-        var without = new ProcessDefaults
+        var without = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
         };
-        var with = new ProcessDefaults
+        var with = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.Degree180
@@ -459,12 +459,12 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800, AngleDeg = 0 };
-        var none = new ProcessDefaults
+        var none = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
         };
-        var rotated = new ProcessDefaults
+        var rotated = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.Degree90
@@ -485,12 +485,12 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800, AngleDeg = 15 };
-        var none = new ProcessDefaults
+        var none = new FanucLsSettings
         {
             CoordinateMode = mode,
             LocalRotation = ExportLocalRotation.None
         };
-        var rotated = new ProcessDefaults
+        var rotated = new FanucLsSettings
         {
             CoordinateMode = mode,
             LocalRotation = ExportLocalRotation.Degree90
@@ -516,7 +516,7 @@ public class WaypointExportServiceTests
     {
         var calibration = CreateCalibration();
         var frame = CreateFrameAtReferencePixel(calibration);
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
@@ -544,7 +544,7 @@ public class WaypointExportServiceTests
             AngleDeg = 90,
             InvertY = true
         };
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromCalibrationRef,
             LocalRotation = ExportLocalRotation.None
@@ -577,7 +577,7 @@ public class WaypointExportServiceTests
         var segment = new PathSegment { Kind = SegmentKind.Dot, X1 = 0, Y1 = 100 };
         FrameTransformHelper.RebindSegmentsToFrame(new[] { segment }, eVision, fanuc);
 
-        var defaults = new ProcessDefaults
+        var defaults = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
             LocalRotation = ExportLocalRotation.None
@@ -626,10 +626,13 @@ public class GeometryHelperTests
         {
             FrameIsDefined = true,
             Frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800 },
-            Defaults = new ProcessDefaults
+            Exporters = new ExporterSettings
             {
-                CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
-                LocalRotation = ExportLocalRotation.None
+                FanucLs = new FanucLsSettings
+                {
+                    CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
+                    LocalRotation = ExportLocalRotation.None
+                }
             }
         };
         document.Segments.Add(new PathSegment
@@ -665,7 +668,10 @@ public class GeometryHelperTests
         {
             FrameIsDefined = true,
             Frame = new FrameDefinition { OriginX_px = 1000, OriginY_px = 800 },
-            Defaults = new ProcessDefaults { LocalRotation = ExportLocalRotation.None }
+            Exporters = new ExporterSettings
+            {
+                FanucLs = new FanucLsSettings { LocalRotation = ExportLocalRotation.None }
+            }
         };
         document.Segments.Add(new PathSegment
         {
@@ -680,7 +686,7 @@ public class GeometryHelperTests
         string csvPath = Path.Combine(Path.GetTempPath(), $"fanuc-frame-row-{Guid.NewGuid():N}.csv");
         try
         {
-            FanucExporter.ExportCsv(preview, csvPath);
+            DiagnosticCsv.Write(preview, csvPath);
             string csv = File.ReadAllText(csvPath);
             Assert.DoesNotContain(",Frame,", csv, StringComparison.Ordinal);
             Assert.Contains(",dot,", csv, StringComparison.Ordinal);
@@ -722,7 +728,7 @@ public class ExportSettingsPersistenceTests : IDisposable
     [Fact]
     public void SaveAndLoad_RoundTripsExportPreferences()
     {
-        var source = new ProcessDefaults
+        var source = new FanucLsSettings
         {
             CoordinateMode = ExportCoordinateMode.OffsetFromFrameOrigin,
             UseFovCenterNeedleOffset = true,
@@ -735,7 +741,7 @@ public class ExportSettingsPersistenceTests : IDisposable
 
         ExportSettingsPersistence.Save(source);
 
-        var loaded = new ProcessDefaults();
+        var loaded = new FanucLsSettings();
         Assert.True(ExportSettingsPersistence.TryLoadInto(loaded));
         Assert.Equal(source.CoordinateMode, loaded.CoordinateMode);
         Assert.Equal(source.UseFovCenterNeedleOffset, loaded.UseFovCenterNeedleOffset);
@@ -761,7 +767,7 @@ public class ExportSettingsPersistenceTests : IDisposable
             }
             """);
 
-        var loaded = new ProcessDefaults();
+        var loaded = new FanucLsSettings();
         Assert.True(ExportSettingsPersistence.TryLoadInto(loaded));
         Assert.Equal(ExportLocalRotation.None, loaded.LocalRotation);
     }
