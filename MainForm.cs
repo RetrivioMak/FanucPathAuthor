@@ -130,15 +130,7 @@ public partial class MainForm : Form
         _canvas.StatusMessage += (_, message) => _statusLabel.Text = message;
         _canvas.UndoStateChanged += (_, _) => UpdateUndoMenuState();
         _canvas.CursorMoved += (_, cursor) =>
-        {
-            if (_canvas.Document.Workspace == WorkspaceKind.Teach)
-            {
-                _cursorLabel.Text = $"XY mm ({cursor.LocalX:0.000}, {cursor.LocalY:0.000})";
-                return;
-            }
-
-            _cursorLabel.Text = $"sensor ({cursor.SensorX:F0},{cursor.SensorY:F0})  local ({cursor.LocalX:F0},{cursor.LocalY:F0})";
-        };
+            _cursorLabel.Text = _canvas.FormatCursor(cursor.SensorX, cursor.SensorY, cursor.LocalX, cursor.LocalY);
         _canvas.FrameOriginPicked += (_, pick) => OnFrameOriginPicked(pick.SensorX, pick.SensorY);
 
         _toolPalette.ToolSelected += (_, tool) => SetActiveTool(tool);
@@ -437,6 +429,9 @@ public partial class MainForm : Form
         PathDocument document = PathSerializer.Load(dialog.FileName);
         CancelFrameEdit();
         TileDocumentHelper.EnsureLegacyMigrated(document);
+        _canvas.UseSpace(document.Workspace == WorkspaceKind.Teach
+            ? new TeachCanvasSpace()
+            : new CvCanvasSpace());
         _canvas.LoadDocument(document);
         _draftCalibration = null;
         _draftCalibrationPath = null;
@@ -939,6 +934,9 @@ public partial class MainForm : Form
 
     private void ShowProjectPanel(WorkspaceKind kind)
     {
+        _canvas.UseSpace(kind == WorkspaceKind.Teach
+            ? new TeachCanvasSpace()
+            : new CvCanvasSpace());
         _projectHost.Controls.Clear();
         if (kind == WorkspaceKind.Cv)
         {
