@@ -85,6 +85,12 @@ public partial class MainForm : Form
         _statusLabel.Text = "Open an FOV image or add teach points to begin.";
     }
 
+    public MainForm(ProjectStart start)
+        : this()
+    {
+        ApplyProjectStart(start);
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         ExportSettingsPersistence.Save(_canvas.Document.Defaults);
@@ -426,7 +432,12 @@ public partial class MainForm : Form
             return;
         }
 
-        PathDocument document = PathSerializer.Load(dialog.FileName);
+        LoadPathFromFile(dialog.FileName);
+    }
+
+    private void LoadPathFromFile(string filePath)
+    {
+        PathDocument document = PathSerializer.Load(filePath);
         CancelFrameEdit();
         TileDocumentHelper.EnsureLegacyMigrated(document);
         _canvas.UseSpace(document.Workspace == WorkspaceKind.Teach
@@ -440,14 +451,14 @@ public partial class MainForm : Form
             ? null
             : ProjectSession.Bind(_canvas.Document);
         ShowProjectPanel(document.Workspace);
-        _currentPathFile = dialog.FileName;
+        _currentPathFile = filePath;
         TryLoadCalibrationFromDocument(document);
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
         RefreshTileList();
         RefreshTeachPointList();
-        _statusLabel.Text = $"Loaded path: {dialog.FileName}";
+        _statusLabel.Text = $"Loaded path: {filePath}";
     }
 
     private void SavePath(object? sender, EventArgs e)
@@ -1074,29 +1085,69 @@ public partial class MainForm : Form
 
     private void NewProject(object? sender, EventArgs e)
     {
-        PathDocument document = _canvas.Document;
-        bool hasContent = document.Workspace != WorkspaceKind.Unset ||
-                          document.Segments.Count > 0 ||
-                          document.Tiles.Count > 0 ||
-                          document.ReferencePoints.Count > 0;
-        if (hasContent &&
-            MessageBox.Show(
-                this,
-                "Start a new project? The current path stays on disk until you save this one.",
-                "New project",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question) != DialogResult.Yes)
+        if (!ConfirmReplaceProject())
         {
             return;
         }
 
+        using var dialog = new StartupDialog();
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        ApplyProjectStart(new ProjectStart(dialog.Action, dialog.FilePath));
+    }
+
+    private void ApplyProjectStart(ProjectStart start)
+    {
+        if (start.Action == StartupAction.Open)
+        {
+            LoadPathFromFile(start.FilePath ?? throw new InvalidOperationException("Choose a project file."));
+            return;
+        }
+
+        BeginEmptyProject(start.Action == StartupAction.NewTeach
+            ? WorkspaceKind.Teach
+            : WorkspaceKind.Cv);
+    }
+
+    private void BeginEmptyProject(WorkspaceKind kind)
+    {
         CancelFrameEdit();
         _session = null;
         _draftCalibration = null;
         _draftCalibrationPath = null;
         _draftFilePath = null;
-        ShowProjectPanel(WorkspaceKind.Unset);
         _canvas.ResetProject();
-        _statusLabel.Text = "New project. Open an FOV image or add teach points.";
+        AttachSession(kind);
+        SyncUiFromDocument();
+        RefreshSegmentList();
+        RefreshWaypointPreview();
+        RefreshTileList();
+        RefreshTeachPointList();
+        _statusLabel.Text = kind == WorkspaceKind.Teach
+            ? "Teach project. Import reference points to begin."
+            : "CV project. Open an FOV image to begin.";
+    }
+
+    private bool ConfirmReplaceProject()
+    {
+        PathDocument document = _canvas.Document;
+        bool hasContent = document.Workspace != WorkspaceKind.Unset ||
+                          document.Segments.Count > 0 ||
+                          document.Tiles.Count > 0 ||
+                          document.ReferencePoints.Count > 0;
+        if (!hasContent)
+        {
+            return true;
+        }
+
+        return MessageBox.Show(
+                this,
+                "Start a new project? The current path stays on disk until you save this one.",
+                "New project",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes;
     }
 }

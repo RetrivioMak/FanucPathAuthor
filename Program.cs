@@ -10,6 +10,17 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        ProjectStart start;
+        using (StartupDialog startup = new StartupDialog())
+        {
+            if (startup.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            start = new ProjectStart(startup.Action, startup.FilePath);
+        }
+
+        Application.Run(new MainForm(start));
     }
 }
