@@ -4,24 +4,13 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor;
 
-public sealed class TeachPointImportDialog : Form
+public partial class TeachPointImportDialog : Form
 {
     private readonly record struct PendingPoint(string? Name, double X, double Y, LengthUnit Unit);
 
     private readonly HashSet<string> _existingNames;
     private readonly HashSet<string> _usedNames;
     private readonly List<PendingPoint> _pending = new();
-    private readonly ComboBox _unit = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
-    private readonly TextBox _name = new() { Width = 140 };
-    private readonly TextBox _x = new() { Width = 100 };
-    private readonly TextBox _y = new() { Width = 100 };
-    private readonly ListView _preview = new()
-    {
-        Dock = DockStyle.Fill,
-        View = View.Details,
-        FullRowSelect = true,
-        HideSelection = false
-    };
 
     public IReadOnlyList<ReferencePoint> Points { get; private set; } = Array.Empty<ReferencePoint>();
 
@@ -29,70 +18,11 @@ public sealed class TeachPointImportDialog : Form
     {
         _existingNames = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
         _usedNames = new HashSet<string>(_existingNames, StringComparer.OrdinalIgnoreCase);
-        Text = "Import teach points";
-        StartPosition = FormStartPosition.CenterParent;
-        MinimizeBox = false;
-        MaximizeBox = false;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        ClientSize = new Size(640, 480);
-
-        _unit.Items.AddRange(new object[] { "?m", "mm", "cm", "m" });
-        _unit.SelectedIndex = 1;
-
-        _preview.Columns.Add("Name", 160);
-        _preview.Columns.Add("X", 100);
-        _preview.Columns.Add("Y", 100);
-        _preview.Columns.Add("Unit", 60);
-
-        var unitRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, 8) };
-        unitRow.Controls.Add(new Label { Text = "Unit", AutoSize = true, Padding = new Padding(0, 6, 8, 0) });
-        unitRow.Controls.Add(_unit);
-        var csvButton = new Button { Text = "Load CSV...", AutoSize = true };
-        csvButton.Click += (_, _) => LoadCsv();
-        unitRow.Controls.Add(csvButton);
-
-        var manual = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, 8) };
-        manual.Controls.Add(new Label { Text = "Name", AutoSize = true, Padding = new Padding(0, 6, 4, 0) });
-        manual.Controls.Add(_name);
-        manual.Controls.Add(new Label { Text = "X", AutoSize = true, Padding = new Padding(8, 6, 4, 0) });
-        manual.Controls.Add(_x);
-        manual.Controls.Add(new Label { Text = "Y", AutoSize = true, Padding = new Padding(8, 6, 4, 0) });
-        manual.Controls.Add(_y);
-        var addButton = new Button { Text = "Add", AutoSize = true };
-        addButton.Click += (_, _) => AddManual();
-        manual.Controls.Add(addButton);
-
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            FlowDirection = FlowDirection.RightToLeft,
-            AutoSize = true,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-        var ok = new Button { Text = "Import", AutoSize = true };
-        ok.Click += (_, _) => Accept();
-        var remove = new Button { Text = "Remove", AutoSize = true };
-        remove.Click += (_, _) => RemoveSelected();
-        buttons.Controls.Add(cancel);
-        buttons.Controls.Add(ok);
-        buttons.Controls.Add(remove);
-
-        var hint = new Label
-        {
-            Dock = DockStyle.Bottom,
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            MaximumSize = new Size(620, 0),
-            Text = "CSV columns: name, x, y. Extra columns are ignored. One unit applies to the whole file. A second import appends points."
-        };
-
-        Controls.Add(_preview);
-        Controls.Add(hint);
-        Controls.Add(buttons);
-        Controls.Add(manual);
-        Controls.Add(unitRow);
-        CancelButton = cancel;
+        InitializeComponent();
+        _csvButton.Click += (_, _) => LoadCsv();
+        _addButton.Click += (_, _) => AddManual();
+        _importButton.Click += (_, _) => Accept();
+        _removeButton.Click += (_, _) => RemoveSelected();
     }
 
     private LengthUnit SelectedUnit => _unit.SelectedIndex switch

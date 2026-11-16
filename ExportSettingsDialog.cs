@@ -3,7 +3,7 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor;
 
-public sealed class ExportSettingsDialog : Form
+public partial class ExportSettingsDialog : Form
 {
     private const int DialogPadding = 12;
     private const int ContentWidth = 1100;
@@ -99,8 +99,7 @@ public sealed class ExportSettingsDialog : Form
         _calibrationInfo = HintLabel(string.Empty, ContentWidth - 48);
         _calibrationInfo.Margin = new Padding(0, 4, 0, 0);
 
-        InitializeFormShell();
-        BuildLayout();
+        InitializeComponent();
 
         bool hasCalibration = calibration?.PixelToRobot != null;
         _modeAbsolute.Enabled = hasCalibration;

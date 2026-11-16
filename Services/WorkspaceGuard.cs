@@ -5,44 +5,21 @@ namespace DispensePathAuthor.Services;
 public static class WorkspaceGuard
 {
     public static bool CanAdopt(WorkspaceKind current, WorkspaceKind next) =>
-        current == WorkspaceKind.Unset || current == next;
+        current == next && current != WorkspaceKind.Unset;
 
     public static string RefusalMessage(WorkspaceKind current) =>
-        current == WorkspaceKind.Teach
-            ? "This project is Teach. Start a new project to add an FOV image."
-            : "This project is CV. Start a new project to add teach points.";
+        current switch
+        {
+            WorkspaceKind.Teach => "This project is Teach. Start a new project to add an FOV image.",
+            WorkspaceKind.Cv => "This project is CV. Start a new project to add teach points.",
+            _ => "Choose a CV or Teach project first."
+        };
 
-    public static void Adopt(PathDocument document, WorkspaceKind kind)
+    public static void Require(WorkspaceKind current, WorkspaceKind next)
     {
-        if (kind == WorkspaceKind.Unset)
+        if (!CanAdopt(current, next))
         {
-            throw new ArgumentOutOfRangeException(nameof(kind), "Choose CV or Teach.");
+            throw new InvalidOperationException(RefusalMessage(current));
         }
-
-        if (!CanAdopt(document.Workspace, kind))
-        {
-            throw new InvalidOperationException(RefusalMessage(document.Workspace));
-        }
-
-        if (document.Workspace == kind)
-        {
-            return;
-        }
-
-        document.Workspace = kind;
-        document.SchemaVersion = Math.Max(document.SchemaVersion, 4);
-        if (kind != WorkspaceKind.Teach)
-        {
-            return;
-        }
-
-        document.Frame = new FrameDefinition();
-        document.FrameIsDefined = true;
-        if (document.Grid.Step_mm <= 0)
-        {
-            document.Grid.Step_mm = 0.2;
-        }
-
-        document.Grid.Enabled = true;
     }
 }

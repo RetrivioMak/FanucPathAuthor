@@ -4,123 +4,84 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor;
 
-public sealed partial class MainForm : Form
+public partial class MainForm : Form
 {
     private readonly PathCanvas _canvas = new() { Dock = DockStyle.Fill };
-    private readonly ListView _segmentList = new()
-    {
-        Dock = DockStyle.Fill,
-        View = View.Details,
-        FullRowSelect = true,
-        HideSelection = false
-    };
-    private readonly Button _btnMoveSegmentUp = new() { Text = "Move up", AutoSize = true, Enabled = false };
-    private readonly Button _btnMoveSegmentDown = new() { Text = "Move down", AutoSize = true, Enabled = false };
-    private readonly Label _segmentGapSummaryLabel = new()
-    {
-        AutoSize = true,
-        Padding = new Padding(8, 6, 0, 0),
-        ForeColor = Color.DimGray,
-        Text = "Sequence: —"
-    };
-    private readonly Label _previewExportModeLabel = new()
-    {
-        AutoSize = true,
-        ForeColor = Color.DimGray,
-        Text = "Export preview: —"
-    };
-    private readonly ListView _waypointPreview = new()
-    {
-        Dock = DockStyle.Fill,
-        View = View.Details,
-        FullRowSelect = true
-    };
-    private readonly ListView _tileList = new()
-    {
-        Dock = DockStyle.Fill,
-        View = View.Details,
-        FullRowSelect = true,
-        HideSelection = false
-    };
-    private readonly NumericUpDown _tileRobotX = CreateNumeric(-5000, 5000, 0.1m, decimals: 2);
-    private readonly NumericUpDown _tileRobotY = CreateNumeric(-5000, 5000, 0.1m, decimals: 2);
-    private readonly NumericUpDown _tileRobotR = CreateNumeric(-360, 360, 0.1m, decimals: 2);
-    private readonly Label _tileOffsetLabel = new() { AutoSize = true, Text = "Canvas offset: —" };
-    private readonly Label _tileWorldLabel = new() { AutoSize = true, Text = "Tile (0,0) world: —" };
-    private readonly Label _tileCaptureHint = new()
-    {
-        AutoSize = true,
-        MaximumSize = new Size(430, 0),
-        ForeColor = Color.DimGray,
-        Text = "Open the anchor FOV image, define Frame, then teach the path in sensor space."
-    };
-    private Button? _tileOpenImageButton;
-    private Button? _tileAddFovButton;
-    private Button? _tileResetCapturePoseButton;
-    private readonly Label _tileModeLabel = new()
-    {
-        AutoSize = true,
-        Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-        Text = "Mode: Single FOV"
-    };
-    private readonly ToolStripStatusLabel _statusLabel = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly NumericUpDown _frameOriginX = CreateNumeric(0, 10000, 0);
-    private readonly NumericUpDown _frameOriginY = CreateNumeric(0, 10000, 0);
-    private readonly NumericUpDown _frameAngle = CreateNumeric(-180, 180, 1);
-    private readonly CheckBox _invertFrameY = new()
-    {
-        Text = "Invert frame Y (Fanuc right-hand)",
-        AutoSize = true,
-        Margin = new Padding(0, 8, 0, 0)
-    };
-    private readonly Button _btnEditFrame = new() { Text = "Edit Frame", AutoSize = true };
-    private readonly Button _btnApplyFrame = new() { Text = "Apply", AutoSize = true, Enabled = false };
-    private readonly Button _btnCancelFrame = new() { Text = "Cancel", AutoSize = true, Enabled = false };
-    private readonly RadioButton _radioMoveShapes = new()
-    {
-        Text = "Move shapes with frame (keep sensor px)",
-        AutoSize = true,
-        Checked = true,
-        Enabled = false
-    };
-    private readonly RadioButton _radioFrameOnly = new()
-    {
-        Text = "Update frame only (keep local px)",
-        AutoSize = true,
-        Enabled = false
-    };
-    private readonly Panel _rightPanel = new() { Dock = DockStyle.Right, Width = 640, Padding = new Padding(0) };
-    private readonly Label _calibrationLabel = new() { AutoSize = true, Text = "Calibration: not loaded" };
     private readonly ToolPalettePanel _toolPalette = new();
     private readonly PathSimulationController _simulation = new();
+    private CvProjectPanel? _cvPanel;
+    private TeachProjectPanel? _teachPanel;
 
-    private ToolStripMenuItem? _undoMenuItem;
-    private ToolStripMenuItem? _redoMenuItem;
-    private readonly ToolStripStatusLabel _cursorLabel = new() { AutoSize = false, Width = 420, TextAlign = ContentAlignment.MiddleLeft };
-    private GroupBox? _frameGroup;
+    private ProjectSession? _session;
+    private RobotCalibrationFile? _draftCalibration;
+    private string? _draftCalibrationPath;
+    private string? _draftFilePath;
 
-    private RobotCalibrationFile? _calibration;
-    private string? _calibrationPath;
-    private string? _currentPathFile;
-    private bool _updatingUi;
-    private bool _frameEditing;
+    private RobotCalibrationFile? _calibration
+    {
+        get => _session?.Calibration ?? _draftCalibration;
+        set
+        {
+            if (_session == null)
+            {
+                _draftCalibration = value;
+                return;
+            }
+
+            _session.Calibration = value;
+        }
+    }
+
+    private string? _calibrationPath
+    {
+        get => _session?.CalibrationPath ?? _draftCalibrationPath;
+        set
+        {
+            if (_session == null)
+            {
+                _draftCalibrationPath = value;
+                return;
+            }
+
+            _session.CalibrationPath = value;
+        }
+    }
+
+    private string? _currentPathFile
+    {
+        get => _session?.FilePath ?? _draftFilePath;
+        set
+        {
+            if (_session == null)
+            {
+                _draftFilePath = value;
+                return;
+            }
+
+            _session.FilePath = value;
+        }
+    }
 
     public MainForm()
     {
+        InitializeComponent();
         Text = AppVersion.WindowTitle;
-        StartPosition = FormStartPosition.CenterScreen;
-        WindowState = FormWindowState.Maximized;
-        KeyPreview = true;
-
-        InitializeLayout();
+        _canvasHost.Controls.Add(_canvas);
+        _paletteHost.Controls.Add(_toolPalette);
+        var resizeGrip = new PanelResizeGrip
+        {
+            TargetPanel = _rightPanel,
+            MinTargetWidth = 320,
+            MaxTargetWidth = 1200
+        };
+        _rightPanel.Controls.Add(resizeGrip);
+        FormClosed += (_, _) => _simulation.Dispose();
         WireEvents();
         ExportSettingsPersistence.TryLoadInto(_canvas.Document.Defaults);
         RefreshSegmentList();
         RefreshWaypointPreview();
         UpdateUndoMenuState();
         SetActiveTool(DrawTool.Dot);
-        RefreshTileList();
-        RefreshTeachPointList();
         _statusLabel.Text = "Open an FOV image or add teach points to begin.";
     }
 
@@ -130,309 +91,27 @@ public sealed partial class MainForm : Form
         base.OnFormClosing(e);
     }
 
-    private void InitializeLayout()
-    {
-        var menu = new MenuStrip();
-        menu.Items.Add(CreateMenu("File", [
-            CreateMenuItem("New project", NewProject),
-            CreateMenuItem("Load path JSON...", LoadPath),
-            CreateMenuItem("Save path JSON...", SavePath),
-            CreateMenuItem("Save path JSON as...", SavePathAs),
-            new ToolStripSeparator(),
-            CreateMenuItem("Load calibration JSON...", LoadCalibration),
-            new ToolStripSeparator(),
-            CreateMenuItem("Export settings...", OpenExportSettings),
-            CreateMenuItem("Export CSV...", ExportCsv),
-            CreateMenuItem("Export Fanuc .LS...", ExportLs)
-        ]));
-        _undoMenuItem = CreateMenuItem("Undo", UndoAction, Keys.Control | Keys.Z);
-        _redoMenuItem = CreateMenuItem("Redo", RedoAction, Keys.Control | Keys.Y);
-        menu.Items.Add(CreateMenu("Edit", [
-            _undoMenuItem,
-            _redoMenuItem,
-            new ToolStripSeparator(),
-            CreateMenuItem("Cancel shape (Esc)", CancelPending),
-            new ToolStripSeparator(),
-            CreateMenuItem("Delete selected segment", DeleteSelectedSegment),
-            CreateMenuItem("Clear all segments", ClearSegments)
-        ]));
-        menu.Items.Add(CreateMenu("View", [
-            CreateMenuItem("Fit view", FitImage),
-            CreateMenuItem("Refresh preview", RefreshWaypointPreview),
-            new ToolStripSeparator(),
-            CreateMenuItem("Simulate Play", SimulationPlay, Keys.F5),
-            CreateMenuItem("Simulate Pause", SimulationPause),
-            CreateMenuItem("Simulate Stop", SimulationStop)
-        ]));
-        MainMenuStrip = menu;
-
-        var resizeGrip = new PanelResizeGrip
-        {
-            TargetPanel = _rightPanel,
-            MinTargetWidth = 320,
-            MaxTargetWidth = 1200
-        };
-
-        var rightInner = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
-        var rightLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3
-        };
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        rightLayout.Controls.Add(BuildFrameGroup(), 0, 0);
-        rightLayout.Controls.Add(BuildDataTabs(), 0, 1);
-        rightLayout.Controls.Add(_calibrationLabel, 0, 2);
-        rightInner.Controls.Add(rightLayout);
-
-        _rightPanel.Controls.Add(rightInner);
-        _rightPanel.Controls.Add(resizeGrip);
-
-        var statusStrip = new StatusStrip();
-        statusStrip.Items.Add(_statusLabel);
-        statusStrip.Items.Add(_cursorLabel);
-        statusStrip.Items.Add(new ToolStripStatusLabel("Ctrl+wheel: zoom | Ctrl+drag: pan | Esc: cancel"));
-
-        // Dock order: Fill/sides first, then top bars (last top control = uppermost).
-        Controls.Add(_canvas);
-        Controls.Add(_rightPanel);
-        Controls.Add(statusStrip);
-        Controls.Add(_toolPalette);
-        Controls.Add(menu);
-
-        FormClosed += (_, _) => _simulation.Dispose();
-        UpdateSimulationUi();
-    }
-
-    private GroupBox BuildFrameGroup()
-    {
-        SetFrameEditorsEnabled(false);
-
-        _frameGroup = new GroupBox { Text = "Frame (sensor px)", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
-        GroupBox group = _frameGroup;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
-        layout.Controls.Add(new Label { Text = "Origin X", AutoSize = true }, 0, 0);
-        layout.Controls.Add(_frameOriginX, 1, 0);
-        layout.Controls.Add(new Label { Text = "Origin Y", AutoSize = true }, 0, 1);
-        layout.Controls.Add(_frameOriginY, 1, 1);
-        layout.Controls.Add(new Label { Text = "Angle deg", AutoSize = true }, 0, 2);
-        layout.Controls.Add(_frameAngle, 1, 2);
-        layout.SetColumnSpan(_invertFrameY, 2);
-        layout.Controls.Add(_invertFrameY, 0, 3);
-        var invertHint = new Label
-        {
-            Text = "Export XY becomes millimeters along this frame. +Y is counterclockwise from +X. Set export rotation to None.",
-            AutoSize = true,
-            MaximumSize = new Size(600, 0),
-            Margin = new Padding(0, 0, 0, 4)
-        };
-        layout.SetColumnSpan(invertHint, 2);
-        layout.Controls.Add(invertHint, 0, 4);
-
-        var applyModePanel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            Margin = new Padding(0, 8, 0, 0)
-        };
-        applyModePanel.Controls.Add(_radioMoveShapes);
-        applyModePanel.Controls.Add(_radioFrameOnly);
-        layout.SetColumnSpan(applyModePanel, 2);
-        layout.Controls.Add(applyModePanel, 0, 5);
-
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Margin = new Padding(0, 8, 0, 0)
-        };
-        buttons.Controls.Add(_btnEditFrame);
-        buttons.Controls.Add(_btnApplyFrame);
-        buttons.Controls.Add(_btnCancelFrame);
-        layout.SetColumnSpan(buttons, 2);
-        layout.Controls.Add(buttons, 0, 6);
-
-        group.Controls.Add(layout);
-        return group;
-    }
-
-    private TabControl BuildDataTabs()
-    {
-        _segmentList.Columns.Add("#", 32);
-        _segmentList.Columns.Add("Type", 60);
-        _segmentList.Columns.Add("Description", 180);
-        _segmentList.Columns.Add("Next gap", 72);
-
-        _waypointPreview.Columns.Add("#", 40);
-        _waypointPreview.Columns.Add("Role", 50);
-        _waypointPreview.Columns.Add("Export X", 90);
-        _waypointPreview.Columns.Add("Export Y", 90);
-        _waypointPreview.Columns.Add("Export R", 70);
-        _waypointPreview.Columns.Add("Local X", 80);
-        _waypointPreview.Columns.Add("Local Y", 80);
-
-        var tabs = new TabControl { Dock = DockStyle.Fill };
-        var segmentsPage = new TabPage("Segments") { Padding = new Padding(4) };
-        var segmentToolbar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Padding = new Padding(0, 6, 0, 0)
-        };
-        segmentToolbar.Controls.Add(_btnMoveSegmentUp);
-        segmentToolbar.Controls.Add(_btnMoveSegmentDown);
-        segmentToolbar.Controls.Add(_segmentGapSummaryLabel);
-        segmentsPage.Controls.Add(_segmentList);
-        segmentsPage.Controls.Add(segmentToolbar);
-        var previewPage = new TabPage("Robot Preview") { Padding = new Padding(4) };
-        var previewHeader = new Panel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(0, 0, 0, 6)
-        };
-        previewHeader.Controls.Add(_previewExportModeLabel);
-        previewPage.Controls.Add(_waypointPreview);
-        previewPage.Controls.Add(previewHeader);
-        tabs.TabPages.Add(segmentsPage);
-        tabs.TabPages.Add(previewPage);
-        tabs.TabPages.Add(BuildTilesTab());
-        tabs.TabPages.Add(BuildTeachTab());
-        return tabs;
-    }
-
-    private TabPage BuildTilesTab()
-    {
-        _tileList.Columns.Add("Name", 100);
-        _tileList.Columns.Add("Capture X", 70);
-        _tileList.Columns.Add("Capture Y", 70);
-        _tileList.Columns.Add("R", 45);
-        _tileList.Columns.Add("Active", 55);
-
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            Padding = new Padding(0, 0, 0, 6)
-        };
-        _tileOpenImageButton = new Button { Text = "Open image...", AutoSize = true, Tag = "open" };
-        _tileAddFovButton = new Button { Text = "Add FOV image...", AutoSize = true, Tag = "add" };
-        buttons.Controls.Add(_tileOpenImageButton);
-        buttons.Controls.Add(_tileAddFovButton);
-        buttons.Controls.Add(new Button { Text = "Remove", AutoSize = true, Tag = "remove" });
-        buttons.Controls.Add(new Button { Text = "Focus", AutoSize = true, Tag = "activate" });
-        foreach (Control control in buttons.Controls)
-        {
-            if (control is Button button)
-            {
-                button.Click += OnTileButtonClick;
-            }
-        }
-
-        var poseLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 2,
-            Padding = new Padding(0, 0, 0, 6)
-        };
-        poseLayout.Controls.Add(new Label { Text = "Capture X mm", AutoSize = true }, 0, 0);
-        poseLayout.Controls.Add(_tileRobotX, 1, 0);
-        poseLayout.Controls.Add(new Label { Text = "Capture Y mm", AutoSize = true }, 0, 1);
-        poseLayout.Controls.Add(_tileRobotY, 1, 1);
-        poseLayout.Controls.Add(new Label { Text = "Capture R deg", AutoSize = true }, 0, 2);
-        poseLayout.Controls.Add(_tileRobotR, 1, 2);
-
-        _tileResetCapturePoseButton = new Button
-        {
-            Text = "Use calib. reference",
-            AutoSize = true,
-            Margin = new Padding(0, 4, 0, 0)
-        };
-        _tileResetCapturePoseButton.Click += OnResetCapturePoseToCalibrationReference;
-
-        var poseGroup = new GroupBox
-        {
-            Text = "Capture pose (robot ref. pose)",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(8, 4, 8, 8),
-            Margin = new Padding(0, 0, 0, 6)
-        };
-        var poseGroupLayout = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoSize = true
-        };
-        poseGroupLayout.Controls.Add(poseLayout);
-        poseGroupLayout.Controls.Add(_tileResetCapturePoseButton);
-        poseGroup.Controls.Add(poseGroupLayout);
-
-        var infoPanel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false
-        };
-        infoPanel.Controls.Add(_tileModeLabel);
-        infoPanel.Controls.Add(_tileCaptureHint);
-        infoPanel.Controls.Add(_tileOffsetLabel);
-        infoPanel.Controls.Add(_tileWorldLabel);
-
-        var bottomPanel = new Panel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
-        bottomPanel.Controls.Add(infoPanel);
-        bottomPanel.Controls.Add(poseGroup);
-        bottomPanel.Controls.Add(buttons);
-
-        var page = new TabPage("FOV Tiles") { Padding = new Padding(4) };
-        page.Controls.Add(_tileList);
-        page.Controls.Add(bottomPanel);
-
-        _tileList.SelectedIndexChanged += (_, _) => SyncTileEditorsFromSelection();
-        _tileRobotX.ValueChanged += (_, _) => ApplyTilePoseFromEditors();
-        _tileRobotY.ValueChanged += (_, _) => ApplyTilePoseFromEditors();
-        _tileRobotR.ValueChanged += (_, _) => ApplyTilePoseFromEditors();
-
-        SetTileEditorsEnabled(false);
-        return page;
-    }
-
-    private void SetFrameEditorsEnabled(bool enabled)
-    {
-        _frameOriginX.Enabled = enabled;
-        _frameOriginY.Enabled = enabled;
-        _frameAngle.Enabled = enabled;
-        _radioMoveShapes.Enabled = enabled;
-        _radioFrameOnly.Enabled = enabled;
-        _btnApplyFrame.Enabled = enabled;
-        _btnCancelFrame.Enabled = enabled;
-        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
-        _btnEditFrame.Enabled = !enabled && !teach;
-        _invertFrameY.Enabled = !teach;
-        if (_frameGroup != null)
-        {
-            _frameGroup.Text = teach ? "Frame (robot mm)" : "Frame (sensor px)";
-        }
-    }
-
     private void WireEvents()
     {
+        _newProjectMenuItem.Click += NewProject;
+        _loadPathMenuItem.Click += LoadPath;
+        _savePathMenuItem.Click += SavePath;
+        _savePathAsMenuItem.Click += SavePathAs;
+        _loadCalibrationMenuItem.Click += LoadCalibration;
+        _exportSettingsMenuItem.Click += OpenExportSettings;
+        _exportCsvMenuItem.Click += ExportCsv;
+        _exportLsMenuItem.Click += ExportLs;
+        _undoMenuItem.Click += UndoAction;
+        _redoMenuItem.Click += RedoAction;
+        _cancelShapeMenuItem.Click += CancelPending;
+        _deleteSegmentMenuItem.Click += DeleteSelectedSegment;
+        _clearSegmentsMenuItem.Click += ClearSegments;
+        _fitViewMenuItem.Click += FitImage;
+        _refreshPreviewMenuItem.Click += RefreshWaypointPreview;
+        _simulatePlayMenuItem.Click += SimulationPlay;
+        _simulatePauseMenuItem.Click += SimulationPause;
+        _simulateStopMenuItem.Click += SimulationStop;
+
         _canvas.DocumentChanged += (_, _) =>
         {
             if (_simulation.State != SimulationState.Stopped)
@@ -447,11 +126,7 @@ public sealed partial class MainForm : Form
             RefreshTeachPointList();
             UpdateSimulationUi();
         };
-        _canvas.SelectionChanged += (_, _) =>
-        {
-            SyncSelectionFromCanvas();
-            UpdateSegmentReorderButtons();
-        };
+        _canvas.SelectionChanged += (_, _) => SyncSelectionFromCanvas();
         _canvas.StatusMessage += (_, message) => _statusLabel.Text = message;
         _canvas.UndoStateChanged += (_, _) => UpdateUndoMenuState();
         _canvas.CursorMoved += (_, cursor) =>
@@ -465,23 +140,6 @@ public sealed partial class MainForm : Form
             _cursorLabel.Text = $"sensor ({cursor.SensorX:F0},{cursor.SensorY:F0})  local ({cursor.LocalX:F0},{cursor.LocalY:F0})";
         };
         _canvas.FrameOriginPicked += (_, pick) => OnFrameOriginPicked(pick.SensorX, pick.SensorY);
-
-        _frameOriginX.ValueChanged += (_, _) => OnFrameDraftChanged();
-        _frameOriginY.ValueChanged += (_, _) => OnFrameDraftChanged();
-        _frameAngle.ValueChanged += (_, _) => OnFrameDraftChanged();
-        _invertFrameY.CheckedChanged += (_, _) =>
-        {
-            if (_updatingUi)
-            {
-                return;
-            }
-
-            _canvas.SetFrameInvertY(_invertFrameY.Checked);
-        };
-
-        _btnEditFrame.Click += (_, _) => BeginFrameEdit();
-        _btnApplyFrame.Click += (_, _) => ApplyFrameEdit();
-        _btnCancelFrame.Click += (_, _) => CancelFrameEdit();
 
         _toolPalette.ToolSelected += (_, tool) => SetActiveTool(tool);
         _toolPalette.SnapToPointChanged += (_, enabled) =>
@@ -499,24 +157,15 @@ public sealed partial class MainForm : Form
         _toolPalette.SimulationStopRequested += (_, _) => StopSimulation();
         _toolPalette.SimulationSpeedMultiplierChanged += (_, speed) => _simulation.SpeedMultiplier = speed;
 
-        _segmentList.SelectedIndexChanged += (_, _) =>
+        _segmentListPanel.SelectionChanged += (_, _) =>
         {
-            if (_updatingUi)
-            {
-                return;
-            }
-
-            UpdateSegmentReorderButtons();
-
-            if (_segmentList.SelectedIndices.Count == 1 &&
-                _segmentList.SelectedItems[0].Tag is int index)
+            if (_segmentListPanel.SelectedIndex is int index)
             {
                 _canvas.SelectSegment(index);
             }
         };
-
-        _btnMoveSegmentUp.Click += MoveSelectedSegmentUp;
-        _btnMoveSegmentDown.Click += MoveSelectedSegmentDown;
+        _segmentListPanel.MoveUpRequested += (_, _) => MoveSelectedSegment(-1);
+        _segmentListPanel.MoveDownRequested += (_, _) => MoveSelectedSegment(1);
 
         _simulation.FrameAdvanced += (_, _) =>
         {
@@ -726,8 +375,8 @@ public sealed partial class MainForm : Form
 
     private void LoadImageIntoDocument(string imagePath, bool isAdditionalFov)
     {
+        AttachSession(WorkspaceKind.Cv);
         PathDocument document = _canvas.Document;
-        WorkspaceGuard.Adopt(document, WorkspaceKind.Cv);
         if (!isAdditionalFov && document.Tiles.Count == 0)
         {
             FovTile tile = TileDocumentHelper.AddTile(document, imagePath);
@@ -789,12 +438,20 @@ public sealed partial class MainForm : Form
         CancelFrameEdit();
         TileDocumentHelper.EnsureLegacyMigrated(document);
         _canvas.LoadDocument(document);
+        _draftCalibration = null;
+        _draftCalibrationPath = null;
+        _draftFilePath = null;
+        _session = document.Workspace == WorkspaceKind.Unset
+            ? null
+            : ProjectSession.Bind(_canvas.Document);
+        ShowProjectPanel(document.Workspace);
         _currentPathFile = dialog.FileName;
         TryLoadCalibrationFromDocument(document);
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
         RefreshTileList();
+        RefreshTeachPointList();
         _statusLabel.Text = $"Loaded path: {dialog.FileName}";
     }
 
@@ -1031,44 +688,12 @@ public sealed partial class MainForm : Form
 
     private void RefreshWaypointPreview(object? sender, EventArgs e) => RefreshWaypointPreview();
 
-    private void RefreshWaypointPreview()
+    private void SetActiveTool(DrawTool tool)
     {
-        ProcessDefaults defaults = _canvas.Document.Defaults;
-        if (_canvas.Document.Workspace == WorkspaceKind.Teach)
-        {
-            string teachNeedle = defaults.UseNeedleOffset
-                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
-                : "Needle OFF";
-            _previewExportModeLabel.Text = $"Export preview: Teach absolute mm | {teachNeedle}";
-        }
-        else
-        {
-        string mode = WaypointExportService.DescribeExportMode(defaults.CoordinateMode);
-        string fov = defaults.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
-        string camera = WaypointExportService.DescribeLocalRotation(defaults.LocalRotation);
-        string needle = defaults.UseNeedleOffset
-            ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
-            : "Needle OFF";
-        _previewExportModeLabel.Text = $"Export preview: {mode} | {fov} | {camera} | {needle}";
-        }
-
-        _waypointPreview.Items.Clear();
-        foreach (RobotWaypoint wp in BuildPreviewWaypoints())
-        {
-            var item = new ListViewItem(wp.Index.ToString());
-            item.SubItems.Add(wp.Role);
-            item.SubItems.Add(double.IsNaN(wp.ExportX_mm) ? "-" : wp.ExportX_mm.ToString("0.###"));
-            item.SubItems.Add(double.IsNaN(wp.ExportY_mm) ? "-" : wp.ExportY_mm.ToString("0.###"));
-            item.SubItems.Add(double.IsNaN(wp.ExportR_deg) ? "-" : wp.ExportR_deg.ToString("0.###"));
-            item.SubItems.Add(wp.LocalX_px.ToString("0.###"));
-            item.SubItems.Add(wp.LocalY_px.ToString("0.###"));
-            if (wp.IsPreviewOnly)
-            {
-                item.ForeColor = Color.DimGray;
-            }
-
-            _waypointPreview.Items.Add(item);
-        }
+        _canvas.ActiveTool = tool;
+        _toolPalette.SetActiveTool(tool);
+        _canvas.CancelPending();
+        _statusLabel.Text = $"Tool: {tool}";
     }
 
     private IReadOnlyList<RobotWaypoint> BuildPreviewWaypoints()
@@ -1083,97 +708,40 @@ public sealed partial class MainForm : Form
         return GeometryHelper.BuildWaypoints(snapshot, _calibration);
     }
 
-    private void RefreshSegmentList()
+    private void RefreshWaypointPreview()
     {
-        int selected = _canvas.SelectedSegmentIndex ?? (
-            _segmentList.SelectedIndices.Count > 0 ? _segmentList.SelectedIndices[0] : -1);
-        bool teach = _canvas.Document.Workspace == WorkspaceKind.Teach;
-        double gapThreshold = teach
-            ? PathSequenceService.TeachGapThresholdMm
-            : PathSequenceService.DefaultGapThresholdPx;
-        string gapUnit = teach ? "mm" : "px";
-        IReadOnlyList<SequenceGap> gaps = PathSequenceService.AnalyzeGaps(_canvas.Document.Segments);
-        _segmentList.Items.Clear();
-        for (int i = 0; i < _canvas.Document.Segments.Count; i++)
+        ProcessDefaults defaults = _canvas.Document.Defaults;
+        string summary;
+        if (_canvas.Document.Workspace == WorkspaceKind.Teach)
         {
-            PathSegment segment = _canvas.Document.Segments[i];
-            var item = new ListViewItem((i + 1).ToString());
-            item.SubItems.Add(segment.Kind.ToString());
-            item.SubItems.Add(segment.DisplayName);
-            if (i < gaps.Count)
-            {
-                SequenceGap gap = gaps[i];
-                item.SubItems.Add(FormatGapDistance(gap.Distance_px, gapUnit));
-                if (gap.HasGap(gapThreshold))
-                {
-                    item.ForeColor = Color.DarkOrange;
-                }
-            }
-            else
-            {
-                item.SubItems.Add("—");
-            }
-
-            item.Tag = i;
-            _segmentList.Items.Add(item);
+            string teachNeedle = defaults.UseNeedleOffset
+                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
+                : "Needle OFF";
+            summary = $"Export preview: Teach absolute mm | {teachNeedle}";
+        }
+        else
+        {
+            string mode = WaypointExportService.DescribeExportMode(defaults.CoordinateMode);
+            string fov = defaults.UseFovCenterNeedleOffset ? "FOV ON" : "FOV OFF";
+            string camera = WaypointExportService.DescribeLocalRotation(defaults.LocalRotation);
+            string needle = defaults.UseNeedleOffset
+                ? $"Needle ON ({defaults.NeedleOffsetX_mm:0.###}, {defaults.NeedleOffsetY_mm:0.###})"
+                : "Needle OFF";
+            summary = $"Export preview: {mode} | {fov} | {camera} | {needle}";
         }
 
-        if (selected >= 0 && selected < _segmentList.Items.Count)
-        {
-            _segmentList.Items[selected].Selected = true;
-        }
-
-        UpdateSegmentGapSummary(gaps, gapThreshold, gapUnit);
-        UpdateSegmentReorderButtons();
+        _waypointPreviewPanel.Show(summary, BuildPreviewWaypoints());
     }
 
-    private static string FormatGapDistance(double distance, string unit) =>
-        distance < 0.0005 ? $"0 {unit}" : unit == "mm" ? $"{distance:0.000} mm" : $"{distance:F1} px";
+    private void RefreshSegmentList() =>
+        _segmentListPanel.Show(_canvas.Document, _canvas.SelectedSegmentIndex);
 
-    private void UpdateSegmentGapSummary(IReadOnlyList<SequenceGap> gaps, double threshold, string unit)
-    {
-        int gapCount = gaps.Count(gap => gap.HasGap(threshold));
-        if (gaps.Count == 0)
-        {
-            _segmentGapSummaryLabel.Text = "Sequence: single segment";
-            _segmentGapSummaryLabel.ForeColor = Color.DimGray;
-            return;
-        }
-
-        string limit = unit == "mm" ? threshold.ToString("0.###") : threshold.ToString("F0");
-        if (gapCount == 0)
-        {
-            _segmentGapSummaryLabel.Text = $"Sequence: all connected (≤ {limit} {unit})";
-            _segmentGapSummaryLabel.ForeColor = Color.DimGray;
-            return;
-        }
-
-        _segmentGapSummaryLabel.Text = $"{gapCount} sequence gap(s) (> {limit} {unit})";
-        _segmentGapSummaryLabel.ForeColor = Color.DarkOrange;
-    }
-
-    private void UpdateSegmentReorderButtons()
-    {
-        if (_segmentList.SelectedIndices.Count != 1 ||
-            _segmentList.SelectedItems[0].Tag is not int index)
-        {
-            _btnMoveSegmentUp.Enabled = false;
-            _btnMoveSegmentDown.Enabled = false;
-            return;
-        }
-
-        _btnMoveSegmentUp.Enabled = PathSequenceService.CanMoveSegment(_canvas.Document.Segments.Count, index, -1);
-        _btnMoveSegmentDown.Enabled = PathSequenceService.CanMoveSegment(_canvas.Document.Segments.Count, index, 1);
-    }
-
-    private void MoveSelectedSegmentUp(object? sender, EventArgs e) => MoveSelectedSegment(-1);
-
-    private void MoveSelectedSegmentDown(object? sender, EventArgs e) => MoveSelectedSegment(1);
+    private void SyncSelectionFromCanvas() =>
+        _segmentListPanel.Show(_canvas.Document, _canvas.SelectedSegmentIndex);
 
     private void MoveSelectedSegment(int delta)
     {
-        if (_segmentList.SelectedIndices.Count != 1 ||
-            _segmentList.SelectedItems[0].Tag is not int index)
+        if (_segmentListPanel.SelectedIndex is not int index)
         {
             return;
         }
@@ -1181,72 +749,31 @@ public sealed partial class MainForm : Form
         _canvas.TryMoveSegment(index, delta);
     }
 
-    private void SyncUiFromDocument()
-    {
-        _updatingUi = true;
-        try
-        {
-            _frameOriginX.Value = Clamp(_frameOriginX, (decimal)_canvas.Document.Frame.OriginX_px);
-            _frameOriginY.Value = Clamp(_frameOriginY, (decimal)_canvas.Document.Frame.OriginY_px);
-            _frameAngle.Value = Clamp(_frameAngle, (decimal)_canvas.Document.Frame.AngleDeg);
-            _invertFrameY.Checked = _canvas.Document.Frame.InvertY;
-        }
-        finally
-        {
-            _updatingUi = false;
-        }
-
-        if (!_frameEditing)
-        {
-            SetFrameEditorsEnabled(false);
-        }
-    }
-
-    private void SyncSelectionFromCanvas()
-    {
-        _updatingUi = true;
-        try
-        {
-            _segmentList.SelectedIndices.Clear();
-            if (_canvas.SelectedSegmentIndex is int index &&
-                index >= 0 &&
-                index < _segmentList.Items.Count)
-            {
-                _segmentList.Items[index].Selected = true;
-                _segmentList.Items[index].Focused = true;
-            }
-        }
-        finally
-        {
-            _updatingUi = false;
-        }
-    }
+    private void SyncUiFromDocument() => _cvPanel?.ShowFrame(_canvas.Document.Frame);
 
     private void BeginFrameEdit()
     {
-        _frameEditing = true;
-        SetFrameEditorsEnabled(true);
+        if (_cvPanel == null)
+        {
+            return;
+        }
+
+        _cvPanel.BeginEdit();
         OnFrameDraftChanged();
         _statusLabel.Text = "Editing frame — Apply or Cancel";
     }
 
     private void ApplyFrameEdit()
     {
-        if (!_frameEditing)
+        if (_cvPanel is not { IsEditing: true })
         {
             return;
         }
 
-        bool moveShapes = _radioMoveShapes.Checked;
-        _canvas.ApplyFrameChange(
-            (double)_frameOriginX.Value,
-            (double)_frameOriginY.Value,
-            (double)_frameAngle.Value,
-            moveShapes);
-
+        bool moveShapes = _cvPanel.MoveShapesWithFrame;
+        _canvas.ApplyFrameChange(_cvPanel.OriginX, _cvPanel.OriginY, _cvPanel.AngleDeg, moveShapes);
         _canvas.Document.FrameIsDefined = true;
-        _frameEditing = false;
-        SetFrameEditorsEnabled(false);
+        _cvPanel.EndEdit();
         _canvas.ClearDraftFrame();
         UpdateUndoMenuState();
         RefreshTileList();
@@ -1257,14 +784,13 @@ public sealed partial class MainForm : Form
 
     private void CancelFrameEdit()
     {
-        if (!_frameEditing)
+        if (_cvPanel is not { IsEditing: true })
         {
             _canvas.ClearDraftFrame();
             return;
         }
 
-        _frameEditing = false;
-        SetFrameEditorsEnabled(false);
+        _cvPanel.EndEdit();
         _canvas.ClearDraftFrame();
         SyncUiFromDocument();
         _statusLabel.Text = "Frame edit cancelled";
@@ -1272,143 +798,57 @@ public sealed partial class MainForm : Form
 
     private void OnFrameDraftChanged()
     {
-        if (!_frameEditing || _updatingUi)
+        if (_cvPanel is not { IsEditing: true })
         {
             return;
         }
 
-        _canvas.SetDraftFrame(
-            (double)_frameOriginX.Value,
-            (double)_frameOriginY.Value,
-            (double)_frameAngle.Value);
+        _canvas.SetDraftFrame(_cvPanel.OriginX, _cvPanel.OriginY, _cvPanel.AngleDeg);
     }
 
     private void OnFrameOriginPicked(double sensorX, double sensorY)
     {
-        if (!_frameEditing)
+        if (_cvPanel == null)
         {
-            BeginFrameEdit();
+            return;
         }
 
-        _updatingUi = true;
-        try
+        if (!_cvPanel.IsEditing)
         {
-            _frameOriginX.Value = Clamp(_frameOriginX, (decimal)Math.Round(sensorX));
-            _frameOriginY.Value = Clamp(_frameOriginY, (decimal)Math.Round(sensorY));
-        }
-        finally
-        {
-            _updatingUi = false;
+            _cvPanel.BeginEdit();
         }
 
+        _cvPanel.SetOrigin(sensorX, sensorY);
         OnFrameDraftChanged();
         _statusLabel.Text = $"Frame origin draft: ({Math.Round(sensorX)}, {Math.Round(sensorY)}) px";
     }
 
-    private void SetActiveTool(DrawTool tool)
+    private void RefreshTileList() => _cvPanel?.ShowTiles(_canvas.Document, _calibration);
+
+    private void RefreshTeachPointList() => _teachPanel?.Show(_canvas.Document);
+
+    private void OnTilePoseChanged(object? sender, EventArgs e)
     {
-        _canvas.ActiveTool = tool;
-        _toolPalette.SetActiveTool(tool);
-        _canvas.CancelPending();
-        _statusLabel.Text = $"Tool: {tool}";
-    }
-
-    private void RefreshTileList()
-    {
-        PathDocument document = _canvas.Document;
-        string? selectedId = GetSelectedTileId();
-        _tileList.Items.Clear();
-        string? activeId = document.ActiveTileId;
-
-        foreach (FovTile tile in document.Tiles)
+        if (_cvPanel?.SelectedTileId is not string id)
         {
-            var item = new ListViewItem(tile.Name);
-            item.SubItems.Add(tile.RobotX_mm.ToString("0.##"));
-            item.SubItems.Add(tile.RobotY_mm.ToString("0.##"));
-            item.SubItems.Add(tile.RobotR_deg.ToString("0.##"));
-            item.SubItems.Add(tile.Id == activeId ? "yes" : string.Empty);
-            item.Tag = tile.Id;
-            _tileList.Items.Add(item);
-        }
-
-        if (!string.IsNullOrWhiteSpace(selectedId))
-        {
-            foreach (ListViewItem item in _tileList.Items)
-            {
-                if (item.Tag is string id && id == selectedId)
-                {
-                    item.Selected = true;
-                    break;
-                }
-            }
-        }
-        else if (_tileList.Items.Count > 0)
-        {
-            string? preferredId = TileDocumentHelper.GetAnchor(document)?.Id
-                ?? document.ActiveTileId
-                ?? _tileList.Items[0].Tag as string;
-
-            foreach (ListViewItem item in _tileList.Items)
-            {
-                if (item.Tag is string id && id == preferredId)
-                {
-                    item.Selected = true;
-                    break;
-                }
-            }
-        }
-
-        UpdateFovModeUi();
-        UpdateTileTransformInfo();
-    }
-
-    private void UpdateFovModeUi()
-    {
-        PathDocument document = _canvas.Document;
-        if (document.Workspace == WorkspaceKind.Teach)
-        {
-            _tileModeLabel.Text = "Mode: Teach project";
-            _tileCaptureHint.Text = "This project is Teach. Start a new project to add an FOV image.";
-            if (_tileOpenImageButton != null)
-            {
-                _tileOpenImageButton.Visible = true;
-                _tileOpenImageButton.Enabled = false;
-            }
-
-            if (_tileAddFovButton != null)
-            {
-                _tileAddFovButton.Visible = false;
-            }
-
             return;
         }
 
-        bool hasTiles = document.Tiles.Count > 0;
-        bool multi = TileDocumentHelper.IsMultiFovMode(document);
-
-        _tileModeLabel.Text = multi ? "Mode: Multi-FOV mosaic" : "Mode: Single FOV";
-        _tileCaptureHint.Text = multi
-            ? "Anchor FOV is the first image. Frame and path use anchor coordinates. Additional FOV tiles are placed on the virtual mosaic canvas."
-            : hasTiles
-                ? document.FrameIsDefined
-                    ? "Single FOV mode. You can add another FOV image to switch to multi-FOV mosaic."
-                    : "Single FOV mode. Define Frame on the anchor image before adding more FOV images."
-                : "Open an FOV image to start a CV project, or add teach points to start a Teach project.";
-
-        if (_tileOpenImageButton != null)
+        FovTile? tile = _canvas.Document.Tiles.FirstOrDefault(item => item.Id == id);
+        if (tile == null)
         {
-            _tileOpenImageButton.Visible = !hasTiles;
-            _tileOpenImageButton.Enabled = true;
+            return;
         }
 
-        if (_tileAddFovButton != null)
-        {
-            _tileAddFovButton.Visible = hasTiles;
-            _tileAddFovButton.Enabled = TileDocumentHelper.CanAddAnotherFovImage(document);
-        }
+        tile.RobotX_mm = _cvPanel.CaptureX;
+        tile.RobotY_mm = _cvPanel.CaptureY;
+        tile.RobotR_deg = _cvPanel.CaptureR;
+        _canvas.RebuildMosaic(fitView: false);
+        RefreshTileList();
+        RefreshWaypointPreview();
     }
 
-    private void OnResetCapturePoseToCalibrationReference(object? sender, EventArgs e)
+    private void OnResetCapturePose(object? sender, EventArgs e)
     {
         if (_calibration == null)
         {
@@ -1416,7 +856,7 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        FovTile? tile = GetSelectedTile() ?? TileDocumentHelper.GetAnchor(_canvas.Document);
+        FovTile? tile = SelectedTile() ?? TileDocumentHelper.GetAnchor(_canvas.Document);
         if (tile == null)
         {
             return;
@@ -1425,167 +865,36 @@ public sealed partial class MainForm : Form
         CapturePoseHelper.ApplyCalibrationReference(tile, _calibration);
         _canvas.RebuildMosaic(fitView: false);
         RefreshTileList();
-        SyncTileEditorsFromSelection();
         RefreshWaypointPreview();
         _statusLabel.Text = "Capture pose reset to calibration reference";
     }
 
-    private string? GetSelectedTileId()
+    private void OnRemoveTile(object? sender, string tileId)
     {
-        if (_tileList.SelectedItems.Count == 0)
+        if (MessageBox.Show(this, "Remove selected tile?", "FOV Tiles", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
         {
-            return null;
+            return;
         }
 
-        return _tileList.SelectedItems[0].Tag as string;
+        TileDocumentHelper.RemoveTile(_canvas.Document, tileId);
+        _canvas.RebuildMosaic();
+        RefreshTileList();
+        SyncUiFromDocument();
+        _statusLabel.Text = "FOV image removed";
     }
 
-    private FovTile? GetSelectedTile() =>
-        GetSelectedTileId() is string id
+    private void OnFocusTile(object? sender, string tileId)
+    {
+        TileDocumentHelper.SetActive(_canvas.Document, tileId);
+        _canvas.FocusTileView(tileId);
+        RefreshTileList();
+        _statusLabel.Text = "Focused tile view";
+    }
+
+    private FovTile? SelectedTile() =>
+        _cvPanel?.SelectedTileId is string id
             ? _canvas.Document.Tiles.FirstOrDefault(tile => tile.Id == id)
             : null;
-
-    private void SyncTileEditorsFromSelection()
-    {
-        _updatingUi = true;
-        try
-        {
-            FovTile? tile = GetSelectedTile();
-            SetTileEditorsEnabled(tile != null);
-            if (tile == null)
-            {
-                _tileOffsetLabel.Text = "Canvas offset: —";
-                _tileWorldLabel.Text = "Tile (0,0) world: —";
-                return;
-            }
-
-            _tileRobotX.Value = Clamp(_tileRobotX, (decimal)tile.RobotX_mm);
-            _tileRobotY.Value = Clamp(_tileRobotY, (decimal)tile.RobotY_mm);
-            _tileRobotR.Value = Clamp(_tileRobotR, (decimal)tile.RobotR_deg);
-            UpdateTileTransformInfo();
-        }
-        finally
-        {
-            _updatingUi = false;
-        }
-    }
-
-    private void ApplyTilePoseFromEditors()
-    {
-        if (_updatingUi)
-        {
-            return;
-        }
-
-        FovTile? tile = GetSelectedTile();
-        if (tile == null)
-        {
-            return;
-        }
-
-        tile.RobotX_mm = (double)_tileRobotX.Value;
-        tile.RobotY_mm = (double)_tileRobotY.Value;
-        tile.RobotR_deg = (double)_tileRobotR.Value;
-        _canvas.RebuildMosaic(fitView: false);
-        RefreshTileList();
-        RefreshWaypointPreview();
-    }
-
-    private void UpdateTileTransformInfo()
-    {
-        FovTile? tile = GetSelectedTile();
-        FovTile? anchor = TileDocumentHelper.GetAnchor(_canvas.Document);
-        if (tile == null || anchor == null)
-        {
-            _tileOffsetLabel.Text = "Canvas offset: —";
-            _tileWorldLabel.Text = "Tile (0,0) world: —";
-            return;
-        }
-
-        if (_calibration?.PixelToRobot == null)
-        {
-            _tileOffsetLabel.Text = "Canvas offset: load calibration";
-            _tileWorldLabel.Text = "Tile (0,0) world: load calibration";
-            return;
-        }
-
-        try
-        {
-            (double worldX, double worldY) = TileTransformService.TilePixelToWorld(0, 0, tile, _calibration);
-            _tileWorldLabel.Text = $"Tile (0,0) world: ({worldX:0.##}, {worldY:0.##}) mm";
-
-            if (tile.Id == anchor.Id)
-            {
-                _tileOffsetLabel.Text = "Canvas offset: (0, 0) px — anchor";
-                return;
-            }
-
-            (double offsetX, double offsetY) = TileTransformService.GetTileCanvasOffset(tile, anchor, _calibration);
-            _tileOffsetLabel.Text = $"Canvas offset: ({offsetX:0.#}, {offsetY:0.#}) px";
-        }
-        catch (Exception ex)
-        {
-            _tileOffsetLabel.Text = $"Canvas offset: {ex.Message}";
-            _tileWorldLabel.Text = "Tile (0,0) world: —";
-        }
-    }
-
-    private void SetTileEditorsEnabled(bool enabled)
-    {
-        _tileRobotX.Enabled = enabled;
-        _tileRobotY.Enabled = enabled;
-        _tileRobotR.Enabled = enabled;
-    }
-
-    private void OnTileButtonClick(object? sender, EventArgs e)
-    {
-        if (sender is not Button button || button.Tag is not string action)
-        {
-            return;
-        }
-
-        string? tileId = GetSelectedTileId();
-        switch (action)
-        {
-            case "open":
-                OpenAnchorImage();
-                break;
-
-            case "add":
-                TryAddFovImage();
-                break;
-
-            case "remove":
-                if (tileId == null)
-                {
-                    return;
-                }
-
-                if (MessageBox.Show(this, "Remove selected tile?", "FOV Tiles", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                {
-                    return;
-                }
-
-                TileDocumentHelper.RemoveTile(_canvas.Document, tileId);
-                _canvas.RebuildMosaic();
-                RefreshTileList();
-                SyncUiFromDocument();
-                _statusLabel.Text = "FOV image removed";
-                break;
-
-            case "activate":
-                if (tileId == null)
-                {
-                    return;
-                }
-
-                TileDocumentHelper.SetActive(_canvas.Document, tileId);
-                _canvas.FocusTileView(tileId);
-                RefreshTileList();
-                _statusLabel.Text = "Focused tile view";
-                break;
-        }
-    }
 
     private void TryLoadCalibrationFromDocument(PathDocument document)
     {
@@ -1593,6 +902,7 @@ public sealed partial class MainForm : Form
             string.IsNullOrWhiteSpace(document.CalibrationPath) ||
             !File.Exists(document.CalibrationPath))
         {
+            SetCalibrationText("Calibration: not loaded");
             return;
         }
 
@@ -1611,7 +921,7 @@ public sealed partial class MainForm : Form
         _calibration = calibration;
         _calibrationPath = path;
         _canvas.Document.CalibrationPath = path;
-        _calibrationLabel.Text = CalibrationLoader.FormatSummary(calibration, path);
+        SetCalibrationText(CalibrationLoader.FormatSummary(calibration, path));
         CalibrationLoader.ApplyCompactMarkerProcessDefaults(calibration, _canvas.Document.Defaults);
 
         FovTile? anchor = TileDocumentHelper.GetAnchor(_canvas.Document);
@@ -1622,60 +932,173 @@ public sealed partial class MainForm : Form
 
         _canvas.SetMosaicCalibration(_calibration);
         RefreshTileList();
-        SyncTileEditorsFromSelection();
         RefreshWaypointPreview();
     }
 
-    private static NumericUpDown CreateNumeric(decimal min, decimal max, decimal increment, int decimals = 0)
+    private void SetCalibrationText(string text) => _cvPanel?.SetCalibrationText(text);
+
+    private void ShowProjectPanel(WorkspaceKind kind)
     {
-        return new NumericUpDown
+        _projectHost.Controls.Clear();
+        if (kind == WorkspaceKind.Cv)
         {
-            Minimum = min,
-            Maximum = max,
-            Increment = increment,
-            DecimalPlaces = decimals,
-            Width = 120
-        };
-    }
-
-    private static NumericUpDown CreateNumeric(int min, int max, int increment) =>
-        CreateNumeric((decimal)min, (decimal)max, increment, 0);
-
-    private static decimal Clamp(NumericUpDown control, decimal value) =>
-        Math.Max(control.Minimum, Math.Min(control.Maximum, value));
-
-    private static ToolStripMenuItem CreateMenuItem(string text, EventHandler handler, Keys? shortcut = null)
-    {
-        var item = new ToolStripMenuItem(text);
-        item.Click += handler;
-        if (shortcut is Keys keys && IsValidMenuShortcut(keys))
-        {
-            item.ShortcutKeys = keys;
+            DisposeProjectPanel(ref _teachPanel);
+            _cvPanel ??= CreateCvPanel();
+            _cvPanel.Dock = DockStyle.Fill;
+            _projectHost.Controls.Add(_cvPanel);
+            return;
         }
 
-        return item;
+        if (kind == WorkspaceKind.Teach)
+        {
+            DisposeProjectPanel(ref _cvPanel);
+            _teachPanel ??= CreateTeachPanel();
+            _teachPanel.Dock = DockStyle.Fill;
+            _projectHost.Controls.Add(_teachPanel);
+            return;
+        }
+
+        DisposeProjectPanel(ref _cvPanel);
+        DisposeProjectPanel(ref _teachPanel);
     }
 
-    /// <summary>
-    /// WinForms menu shortcuts require a modifier (Ctrl/Alt/Shift) or an F-key.
-    /// Bare keys like Esc/Delete must be handled via KeyDown only.
-    /// </summary>
-    private static bool IsValidMenuShortcut(Keys keys)
+    private CvProjectPanel CreateCvPanel()
     {
-        Keys modifiers = keys & Keys.Modifiers;
-        if (modifiers != Keys.None)
+        var panel = new CvProjectPanel();
+        panel.EditFrameRequested += (_, _) => BeginFrameEdit();
+        panel.ApplyFrameRequested += (_, _) => ApplyFrameEdit();
+        panel.CancelFrameRequested += (_, _) => CancelFrameEdit();
+        panel.FrameDraftChanged += (_, _) => OnFrameDraftChanged();
+        panel.InvertYChanged += (_, _) => _canvas.SetFrameInvertY(panel.InvertFrameY);
+        panel.OpenImageRequested += (_, _) => OpenAnchorImage();
+        panel.AddFovRequested += (_, _) => TryAddFovImage();
+        panel.RemoveTileRequested += OnRemoveTile;
+        panel.FocusTileRequested += OnFocusTile;
+        panel.ResetCapturePoseRequested += OnResetCapturePose;
+        panel.TilePoseChanged += OnTilePoseChanged;
+        return panel;
+    }
+
+    private TeachProjectPanel CreateTeachPanel()
+    {
+        var panel = new TeachProjectPanel();
+        panel.ImportRequested += (_, _) => ImportTeachPoints();
+        panel.RemoveRequested += (_, _) =>
+        {
+            if (panel.SelectedPointId is string id)
+            {
+                _canvas.RemoveReferencePoint(id);
+            }
+        };
+        panel.AlignRequested += (_, _) =>
+        {
+            if (panel.SelectedPointId is not string id)
+            {
+                return;
+            }
+
+            ReferencePoint? point = _canvas.Document.ReferencePoints.FirstOrDefault(item => item.Id == id);
+            if (point != null)
+            {
+                _canvas.AlignGridTo(point.X_mm, point.Y_mm);
+            }
+        };
+        panel.GridEnabledChanged += (_, _) => _canvas.SetGridEnabled(panel.GridEnabled);
+        panel.GridStepChanged += (_, _) => _canvas.SetGridStep(panel.GridStepMillimeters);
+        return panel;
+    }
+
+    private static void DisposeProjectPanel<T>(ref T? panel) where T : Control
+    {
+        panel?.Dispose();
+        panel = null;
+    }
+
+    private bool EnsureWorkspace(WorkspaceKind kind)
+    {
+        WorkspaceKind current = _session?.Kind ?? _canvas.Document.Workspace;
+        if (current == WorkspaceKind.Unset || current == kind)
         {
             return true;
         }
 
-        Keys keyCode = keys & Keys.KeyCode;
-        return keyCode is >= Keys.F1 and <= Keys.F24;
+        MessageBox.Show(
+            this,
+            WorkspaceGuard.RefusalMessage(current),
+            "Project type",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+        return false;
     }
 
-    private static ToolStripMenuItem CreateMenu(string text, ToolStripItem[] items)
+    private void AttachSession(WorkspaceKind kind)
     {
-        var menu = new ToolStripMenuItem(text);
-        menu.DropDownItems.AddRange(items);
-        return menu;
+        if (_session != null)
+        {
+            _session.Require(kind);
+            return;
+        }
+
+        _session = ProjectSession.Start(_canvas.Document, kind);
+        _session.FilePath = _draftFilePath;
+        _session.Calibration = _draftCalibration;
+        _session.CalibrationPath = _draftCalibrationPath;
+        _draftFilePath = null;
+        _draftCalibration = null;
+        _draftCalibrationPath = null;
+        _canvas.ClearHistory();
+        ShowProjectPanel(kind);
+        if (kind == WorkspaceKind.Cv)
+        {
+            SetCalibrationText(_calibration == null
+                ? "Calibration: not loaded"
+                : CalibrationLoader.FormatSummary(_calibration, _calibrationPath ?? string.Empty));
+        }
+    }
+
+    private void ImportTeachPoints()
+    {
+        if (!EnsureWorkspace(WorkspaceKind.Teach))
+        {
+            return;
+        }
+
+        var existingNames = _canvas.Document.ReferencePoints.Select(static point => point.Name);
+        using var dialog = new TeachPointImportDialog(existingNames);
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Points.Count == 0)
+        {
+            return;
+        }
+
+        AttachSession(WorkspaceKind.Teach);
+        _canvas.AddReferencePoints(dialog.Points);
+    }
+
+    private void NewProject(object? sender, EventArgs e)
+    {
+        PathDocument document = _canvas.Document;
+        bool hasContent = document.Workspace != WorkspaceKind.Unset ||
+                          document.Segments.Count > 0 ||
+                          document.Tiles.Count > 0 ||
+                          document.ReferencePoints.Count > 0;
+        if (hasContent &&
+            MessageBox.Show(
+                this,
+                "Start a new project? The current path stays on disk until you save this one.",
+                "New project",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        CancelFrameEdit();
+        _session = null;
+        _draftCalibration = null;
+        _draftCalibrationPath = null;
+        _draftFilePath = null;
+        ShowProjectPanel(WorkspaceKind.Unset);
+        _canvas.ResetProject();
+        _statusLabel.Text = "New project. Open an FOV image or add teach points.";
     }
 }

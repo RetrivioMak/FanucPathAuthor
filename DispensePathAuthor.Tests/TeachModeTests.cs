@@ -205,10 +205,48 @@ public class TeachModeTests : IDisposable
     public void WorkspaceGuard_BlocksTheOtherProjectType()
     {
         var document = new PathDocument();
-        WorkspaceGuard.Adopt(document, WorkspaceKind.Cv);
+        ProjectSession session = ProjectSession.Start(document, WorkspaceKind.Cv);
 
+        Assert.Equal(WorkspaceKind.Cv, session.Kind);
         Assert.False(WorkspaceGuard.CanAdopt(document.Workspace, WorkspaceKind.Teach));
+        Assert.Throws<InvalidOperationException>(() => ProjectSession.Start(document, WorkspaceKind.Teach));
         Assert.Equal(WorkspaceKind.Cv, document.Workspace);
+    }
+
+    [Fact]
+    public void Session_StartTeach_InitializesFrameAndRejectsCv()
+    {
+        var document = new PathDocument();
+        ProjectSession session = ProjectSession.Start(document, WorkspaceKind.Teach);
+        document.Grid.Step_mm = 1;
+        document.Grid.IsAligned = true;
+
+        ProjectSession again = ProjectSession.Start(document, WorkspaceKind.Teach);
+
+        Assert.Equal(WorkspaceKind.Teach, session.Kind);
+        Assert.True(document.FrameIsDefined);
+        Assert.True(document.Grid.Enabled);
+        Assert.Equal(1, again.Document.Grid.Step_mm, 3);
+        Assert.True(again.Document.Grid.IsAligned);
+        Assert.Throws<InvalidOperationException>(() => ProjectSession.Start(document, WorkspaceKind.Cv));
+    }
+
+    [Fact]
+    public void Session_RejectsUnsetAndBindsLoadedKind()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ProjectSession.Start(new PathDocument(), WorkspaceKind.Unset));
+        Assert.False(WorkspaceGuard.CanAdopt(WorkspaceKind.Unset, WorkspaceKind.Cv));
+
+        var loaded = new PathDocument { Workspace = WorkspaceKind.Teach };
+        ProjectSession session = ProjectSession.Bind(loaded);
+        session.FilePath = "teach.json";
+        session.CalibrationPath = "cal.json";
+
+        Assert.Equal(WorkspaceKind.Teach, session.Kind);
+        Assert.Equal("teach.json", session.FilePath);
+        Assert.Equal("cal.json", session.CalibrationPath);
+        session.Require(WorkspaceKind.Teach);
+        Assert.Throws<InvalidOperationException>(() => session.Require(WorkspaceKind.Cv));
     }
 
     private string Write(string json)

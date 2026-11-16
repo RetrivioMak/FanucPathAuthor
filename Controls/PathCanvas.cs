@@ -1575,8 +1575,9 @@ public sealed class PathCanvas : Control
         _suppressUndo = true;
         try
         {
+            WorkspaceKind lockedKind = Document.Workspace;
             Document.SchemaVersion = snapshot.SchemaVersion;
-            Document.Workspace = snapshot.Workspace;
+            Document.Workspace = lockedKind == WorkspaceKind.Unset ? snapshot.Workspace : lockedKind;
             Document.ImagePath = snapshot.ImagePath;
             Document.CalibrationPath = snapshot.CalibrationPath;
             Document.ActiveTileId = snapshot.ActiveTileId;
@@ -1745,17 +1746,13 @@ public sealed class PathCanvas : Control
             return;
         }
 
-        if (!WorkspaceGuard.CanAdopt(Document.Workspace, WorkspaceKind.Teach))
-        {
-            throw new InvalidOperationException(WorkspaceGuard.RefusalMessage(Document.Workspace));
-        }
+        WorkspaceGuard.Require(Document.Workspace, WorkspaceKind.Teach);
 
-        bool becameTeach = Document.Workspace != WorkspaceKind.Teach;
+        bool firstPoints = Document.ReferencePoints.Count == 0;
         CommitUndoSnapshot();
-        WorkspaceGuard.Adopt(Document, WorkspaceKind.Teach);
         Document.ReferencePoints.AddRange(points.Select(static point => point.Clone()));
         UpdateTeachCanvasBounds();
-        if (becameTeach)
+        if (firstPoints)
         {
             FitToView();
         }
@@ -1818,6 +1815,12 @@ public sealed class PathCanvas : Control
 
         Document.Grid.Step_mm = stepMm;
         Invalidate();
+    }
+
+    public void ClearHistory()
+    {
+        _undoRedo.Clear();
+        RaiseUndoStateChanged();
     }
 
     public void ResetProject()
