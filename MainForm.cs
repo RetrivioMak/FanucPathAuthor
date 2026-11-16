@@ -16,6 +16,7 @@ public partial class MainForm : Form
     private RobotCalibrationFile? _draftCalibration;
     private string? _draftCalibrationPath;
     private string? _draftFilePath;
+    private string? _packageCacheDirectory;
 
     private RobotCalibrationFile? _calibration
     {
@@ -82,6 +83,7 @@ public partial class MainForm : Form
         RefreshWaypointPreview();
         UpdateUndoMenuState();
         SetActiveTool(DrawTool.Dot);
+        _canvas.ResolveStoredFile = ResolveStoredFile;
         _statusLabel.Text = "Open an FOV image or add teach points to begin.";
     }
 
@@ -425,19 +427,28 @@ public partial class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Path JSON|*.json|All files|*.*"
+            Filter = ProjectPackage.OpenFilter
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
         }
 
-        LoadPathFromFile(dialog.FileName);
+        try
+        {
+            LoadPathFromFile(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Open project", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void LoadPathFromFile(string filePath)
     {
-        PathDocument document = PathSerializer.Load(filePath);
+        LoadedProject loaded = ProjectPackage.LoadFile(filePath);
+        _packageCacheDirectory = loaded.CacheDirectory;
+        PathDocument document = loaded.Document;
         CancelFrameEdit();
         TileDocumentHelper.EnsureLegacyMigrated(document);
         _canvas.UseSpace(document.Workspace == WorkspaceKind.Teach
@@ -458,47 +469,83 @@ public partial class MainForm : Form
         RefreshWaypointPreview();
         RefreshTileList();
         RefreshTeachPointList();
-        _statusLabel.Text = $"Loaded path: {filePath}";
+        _statusLabel.Text = $"Loaded project: {filePath}";
     }
 
     private void SavePath(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_currentPathFile))
+        if (string.IsNullOrWhiteSpace(_currentPathFile) ||
+            !ProjectPackage.HasPackageExtension(_currentPathFile))
         {
+            if (!string.IsNullOrWhiteSpace(_currentPathFile))
+            {
+                WritePackage(Path.ChangeExtension(_currentPathFile, ProjectPackage.Extension));
+                return;
+            }
+
             SavePathAs(sender, e);
             return;
         }
 
-        WritePathFile(_currentPathFile);
+        WritePackage(_currentPathFile);
     }
 
     private void SavePathAs(object? sender, EventArgs e)
     {
         using var dialog = new SaveFileDialog
         {
-            Filter = "Path JSON|*.json",
-            FileName = string.IsNullOrWhiteSpace(_currentPathFile) ? "glue_path.json" : Path.GetFileName(_currentPathFile)
+            Filter = ProjectPackage.SaveFilter,
+            DefaultExt = "dpath",
+            AddExtension = true,
+            FileName = string.IsNullOrWhiteSpace(_currentPathFile)
+                ? "project.dpath"
+                : Path.ChangeExtension(Path.GetFileName(_currentPathFile), ProjectPackage.Extension)
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
         }
 
-        WritePathFile(dialog.FileName);
-        _currentPathFile = dialog.FileName;
+        WritePackage(dialog.FileName);
     }
 
-    private void WritePathFile(string path)
+    private void WritePackage(string path)
     {
-        PathDocument snapshot = _canvas.CreateDocumentSnapshot();
-        if (!string.IsNullOrWhiteSpace(_calibrationPath))
+        try
         {
-            snapshot.CalibrationPath = _calibrationPath;
+            PathDocument snapshot = _canvas.CreateDocumentSnapshot();
+            if (!string.IsNullOrWhiteSpace(_calibrationPath))
+            {
+                snapshot.CalibrationPath = _calibrationPath;
+            }
+
+            SavedPackage saved = ProjectPackage.Save(snapshot, path, _packageCacheDirectory);
+            _packageCacheDirectory = saved.CacheDirectory;
+            ApplySavedPackage(saved.Document);
+            _currentPathFile = path;
+            _statusLabel.Text = $"Saved project: {path}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Save project", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void ApplySavedPackage(PathDocument saved)
+    {
+        foreach (FovTile savedTile in saved.Tiles)
+        {
+            FovTile? live = _canvas.Document.Tiles.FirstOrDefault(tile => tile.Id == savedTile.Id);
+            if (live != null)
+            {
+                live.ImagePath = savedTile.ImagePath;
+            }
         }
 
-        PathSerializer.Save(snapshot, path);
-        _canvas.Document.CalibrationPath = snapshot.CalibrationPath;
-        _statusLabel.Text = $"Saved path: {path}";
+        TileDocumentHelper.SyncImagePath(_canvas.Document);
+        _canvas.Document.SchemaVersion = saved.SchemaVersion;
+        _canvas.Document.CalibrationPath = saved.CalibrationPath;
+        _calibrationPath = saved.CalibrationPath;
     }
 
     private void OpenExportSettings(object? sender, EventArgs e)
@@ -904,9 +951,10 @@ public partial class MainForm : Form
 
     private void TryLoadCalibrationFromDocument(PathDocument document)
     {
+        string? calibrationFile = ResolveStoredFile(document.CalibrationPath);
         if (document.Workspace == WorkspaceKind.Teach ||
             string.IsNullOrWhiteSpace(document.CalibrationPath) ||
-            !File.Exists(document.CalibrationPath))
+            calibrationFile == null)
         {
             SetCalibrationText("Calibration: not loaded");
             return;
@@ -914,7 +962,7 @@ public partial class MainForm : Form
 
         try
         {
-            ApplyLoadedCalibration(CalibrationLoader.Load(document.CalibrationPath), document.CalibrationPath);
+            ApplyLoadedCalibration(CalibrationLoader.Load(calibrationFile), document.CalibrationPath);
         }
         catch
         {
@@ -1119,6 +1167,7 @@ public partial class MainForm : Form
         _draftCalibration = null;
         _draftCalibrationPath = null;
         _draftFilePath = null;
+        _packageCacheDirectory = null;
         _canvas.ResetProject();
         AttachSession(kind);
         SyncUiFromDocument();
@@ -1130,6 +1179,9 @@ public partial class MainForm : Form
             ? "Teach project. Import reference points to begin."
             : "CV project. Open an FOV image to begin.";
     }
+
+    private string? ResolveStoredFile(string? storedPath) =>
+        ProjectPackage.Resolve(_packageCacheDirectory, storedPath);
 
     private bool ConfirmReplaceProject()
     {

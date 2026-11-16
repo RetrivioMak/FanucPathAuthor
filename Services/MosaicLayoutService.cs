@@ -21,7 +21,10 @@ public static class MosaicLayoutService
 {
     private const float BoundsPaddingPx = 40f;
 
-    public static MosaicLayout? TryBuild(PathDocument document, RobotCalibrationFile calibration)
+    public static MosaicLayout? TryBuild(
+        PathDocument document,
+        RobotCalibrationFile calibration,
+        Func<string?, string?>? resolveStoredFile = null)
     {
         if (calibration.PixelToRobot == null || document.Tiles.Count == 0)
         {
@@ -42,12 +45,13 @@ public static class MosaicLayoutService
 
         foreach (FovTile tile in document.Tiles)
         {
-            if (string.IsNullOrWhiteSpace(tile.ImagePath) || !File.Exists(tile.ImagePath))
+            string? imagePath = resolveStoredFile?.Invoke(tile.ImagePath) ?? tile.ImagePath;
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
             {
                 continue;
             }
 
-            Image image = Image.FromFile(tile.ImagePath);
+            Image image = ImageFileLoader.Open(imagePath);
             (double originX, double originY) = TileTransformService.GetTileCanvasOffset(tile, anchorTile, calibration);
 
             float left = (float)originX;

@@ -71,6 +71,7 @@ public sealed class PathCanvas : Control
     public bool CanUndo => _undoRedo.CanUndo;
     public bool CanRedo => _undoRedo.CanRedo;
     public bool HasPendingPoints => _pendingPoints.Count > 0;
+    public Func<string?, string?>? ResolveStoredFile { get; set; }
 
     public void ClearSimulationOverlay()
     {
@@ -98,7 +99,7 @@ public sealed class PathCanvas : Control
     public void LoadImage(string path)
     {
         _image?.Dispose();
-        _image = Image.FromFile(path);
+        _image = ImageFileLoader.Open(path);
         Document.ImagePath = path;
         _canvasBounds = new RectangleF(0, 0, _image.Width, _image.Height);
         FitToView();
@@ -132,7 +133,7 @@ public sealed class PathCanvas : Control
 
         if (_mosaicCalibration?.PixelToRobot != null && Document.Tiles.Count > 0)
         {
-            MosaicLayout? layout = MosaicLayoutService.TryBuild(Document, _mosaicCalibration);
+            MosaicLayout? layout = MosaicLayoutService.TryBuild(Document, _mosaicCalibration, ResolveStoredFile);
             if (layout != null)
             {
                 _mosaicTiles.AddRange(layout.Tiles);
@@ -148,11 +149,12 @@ public sealed class PathCanvas : Control
         }
 
         FovTile? activeTile = TileDocumentHelper.GetActive(Document);
+        string? imagePath = ResolveFile(activeTile?.ImagePath);
         if (activeTile != null &&
-            !string.IsNullOrWhiteSpace(activeTile.ImagePath) &&
-            File.Exists(activeTile.ImagePath))
+            !string.IsNullOrWhiteSpace(imagePath) &&
+            File.Exists(imagePath))
         {
-            _image = Image.FromFile(activeTile.ImagePath);
+            _image = ImageFileLoader.Open(imagePath);
             _canvasBounds = new RectangleF(0, 0, _image.Width, _image.Height);
             Document.ImagePath = activeTile.ImagePath;
             if (fitView)
@@ -168,6 +170,9 @@ public sealed class PathCanvas : Control
 
         Invalidate();
     }
+
+    private string? ResolveFile(string? storedPath) =>
+        ResolveStoredFile != null ? ResolveStoredFile(storedPath) : storedPath;
 
     public void LoadActiveTileImage() => RebuildMosaic();
 

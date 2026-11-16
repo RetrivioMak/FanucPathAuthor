@@ -68,11 +68,11 @@ partial class MainForm
         _newProjectMenuItem.Name = "newProjectMenuItem";
         _newProjectMenuItem.Text = "New project";
         _loadPathMenuItem.Name = "loadPathMenuItem";
-        _loadPathMenuItem.Text = "Load path JSON...";
+        _loadPathMenuItem.Text = "Open project...";
         _savePathMenuItem.Name = "savePathMenuItem";
-        _savePathMenuItem.Text = "Save path JSON...";
+        _savePathMenuItem.Text = "Save project";
         _savePathAsMenuItem.Name = "savePathAsMenuItem";
-        _savePathAsMenuItem.Text = "Save path JSON as...";
+        _savePathAsMenuItem.Text = "Save project as...";
         _loadCalibrationMenuItem.Name = "loadCalibrationMenuItem";
         _loadCalibrationMenuItem.Text = "Load calibration JSON...";
         _exportSettingsMenuItem.Name = "exportSettingsMenuItem";

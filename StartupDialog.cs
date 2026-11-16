@@ -35,7 +35,7 @@ public partial class StartupDialog : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Path JSON|*.json|All files|*.*",
+            Filter = Services.ProjectPackage.OpenFilter,
             Title = "Open project"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -45,7 +45,7 @@ public partial class StartupDialog : Form
 
         try
         {
-            Services.PathSerializer.Load(dialog.FileName);
+            Services.ProjectPackage.LoadFile(dialog.FileName);
         }
         catch (Exception ex)
         {

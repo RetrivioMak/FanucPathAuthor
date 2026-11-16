@@ -18,15 +18,17 @@ public static class PathSerializer
         }
     };
 
-    public static void Save(PathDocument document, string filePath)
-    {
-        string json = JsonSerializer.Serialize(document, Options);
-        File.WriteAllText(filePath, json);
-    }
+    public static string ToJson(PathDocument document) =>
+        JsonSerializer.Serialize(document, Options);
 
-    public static PathDocument Load(string filePath)
+    public static void Save(PathDocument document, string filePath) =>
+        File.WriteAllText(filePath, ToJson(document));
+
+    public static PathDocument Load(string filePath) =>
+        LoadFromJson(File.ReadAllText(filePath));
+
+    public static PathDocument LoadFromJson(string json)
     {
-        string json = File.ReadAllText(filePath);
         using JsonDocument jsonDocument = JsonDocument.Parse(json);
         PathDocument? document = JsonSerializer.Deserialize<PathDocument>(json, Options);
         document ??= new PathDocument();
