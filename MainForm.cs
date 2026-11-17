@@ -109,6 +109,7 @@ public partial class MainForm : Form
         _exportSettingsMenuItem.Click += OpenExportSettings;
         _exportCsvMenuItem.Click += ExportCsv;
         BuildExporterMenu();
+        BuildImporterMenu();
         _undoMenuItem.Click += UndoAction;
         _redoMenuItem.Click += RedoAction;
         _cancelShapeMenuItem.Click += CancelPending;
@@ -700,6 +701,95 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void BuildImporterMenu()
+    {
+        var importMenu = new ToolStripMenuItem("Import") { Name = "importMenu" };
+        foreach (IGeometryImporter importer in ImporterRegistry.Importers)
+        {
+            IGeometryImporter captured = importer;
+            var item = new ToolStripMenuItem(captured.MenuLabel) { Name = captured.Id + "ImportMenuItem" };
+            item.Click += (_, _) => ImportWith(captured);
+            importMenu.DropDownItems.Add(item);
+        }
+
+        _menuStrip.Items.Insert(1, importMenu);
+    }
+
+    private void ImportWith(IGeometryImporter importer)
+    {
+        string? reason = importer.UnavailableReason(_canvas.Document.Workspace);
+        if (reason != null)
+        {
+            MessageBox.Show(this, reason, importer.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var fileDialog = new OpenFileDialog
+        {
+            Filter = importer.FileFilter,
+            Title = importer.MenuLabel
+        };
+        if (fileDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        GeometryImportSurvey survey;
+        try
+        {
+            survey = importer.Survey(fileDialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, importer.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        using var page = new GeometryImportDialog(survey);
+        if (page.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        GeometryImportResult result;
+        try
+        {
+            result = importer.Import(
+                fileDialog.FileName,
+                new GeometryImportOptions
+                {
+                    Layers = page.SelectedLayers,
+                    Unit = page.Unit,
+                    OriginX_mm = page.OriginX_mm,
+                    OriginY_mm = page.OriginY_mm
+                },
+                _canvas.Document.Defaults.GlueOn,
+                _canvas.Document.Defaults.Speed_mm_s);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, importer.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        _canvas.AppendSegments(result.Segments);
+        if (result.Segments.Count > 0)
+        {
+            _canvas.FitToView();
+        }
+
+        _statusLabel.Text = $"Imported {result.Segments.Count} segments.";
+        if (result.Warnings.Count > 0)
+        {
+            MessageBox.Show(
+                this,
+                string.Join(Environment.NewLine, result.Warnings),
+                importer.MenuLabel,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
     }
 

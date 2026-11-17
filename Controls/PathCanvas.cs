@@ -474,6 +474,24 @@ public sealed class PathCanvas : Control
         return true;
     }
 
+    public void AppendSegments(IReadOnlyList<PathSegment> segments)
+    {
+        if (segments.Count == 0)
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.Segments.AddRange(segments.Select(DocumentClone.CloneSegment));
+        SelectedSegmentIndex = Document.Segments.Count - 1;
+        _pendingPoints.Clear();
+        _cursorLocal = null;
+        ApplyMeasuredBounds();
+        RaiseDocumentChanged();
+        RaiseSelectionChanged();
+        Invalidate();
+    }
+
     public void ClearSegments()
     {
         if (Document.Segments.Count == 0)

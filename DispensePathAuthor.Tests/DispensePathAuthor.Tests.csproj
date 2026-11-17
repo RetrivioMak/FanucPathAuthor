@@ -20,4 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\DispensePathAuthor.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\teach-path.dxf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

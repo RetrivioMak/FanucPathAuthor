@@ -28,6 +28,11 @@
     <Content Remove="DispensePathAuthor.Tests\**" />
   </ItemGroup>
 
+  <!-- DXF types are used only by Services/DxfImporter.cs. -->
+  <ItemGroup>
+    <PackageReference Include="netDxf" Version="2023.11.10" />
+  </ItemGroup>
+
   <!-- Legacy VS template file, if present, conflicts with SDK-generated assembly info. -->
   <ItemGroup>
     <Compile Remove="Properties\AssemblyInfo.cs" Condition="Exists('Properties\AssemblyInfo.cs')" />
