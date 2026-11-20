@@ -89,8 +89,16 @@ public static class GeometryHelper
             };
 
             int roleIndex = 0;
-            foreach ((double localX, double localY) in ExpandSegment(segment))
+            foreach ((double storedX, double storedY) in ExpandSegment(segment))
             {
+                double localX = storedX;
+                double localY = storedY;
+                if (FrameMillimeters.StoresMillimeters(document) &&
+                    FrameMillimeters.TryGetScale(document.Frame, calibration, out FrameAxisScale scale))
+                {
+                    (localX, localY) = FrameMillimeters.ToLocalPixels(storedX, storedY, scale);
+                }
+
                 double exportX = double.NaN;
                 double exportY = double.NaN;
                 double exportR = double.NaN;

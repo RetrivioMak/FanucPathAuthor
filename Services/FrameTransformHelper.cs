@@ -11,20 +11,22 @@ public static class FrameTransformHelper
     public static void RebindSegmentsToFrame(
         IEnumerable<PathSegment> segments,
         FrameDefinition oldFrame,
-        FrameDefinition newFrame)
+        FrameDefinition newFrame,
+        FrameAxisScale? fromMillimeters = null,
+        FrameAxisScale? toMillimeters = null)
     {
         foreach (PathSegment segment in segments)
         {
-            (segment.X1, segment.Y1) = RebindPoint(segment.X1, segment.Y1, oldFrame, newFrame);
+            (segment.X1, segment.Y1) = RebindPoint(segment.X1, segment.Y1, oldFrame, newFrame, fromMillimeters, toMillimeters);
 
             if (segment.Kind is SegmentKind.Line or SegmentKind.Arc)
             {
-                (segment.X2, segment.Y2) = RebindPoint(segment.X2, segment.Y2, oldFrame, newFrame);
+                (segment.X2, segment.Y2) = RebindPoint(segment.X2, segment.Y2, oldFrame, newFrame, fromMillimeters, toMillimeters);
             }
 
             if (segment.Kind == SegmentKind.Arc)
             {
-                (segment.X3, segment.Y3) = RebindPoint(segment.X3, segment.Y3, oldFrame, newFrame);
+                (segment.X3, segment.Y3) = RebindPoint(segment.X3, segment.Y3, oldFrame, newFrame, fromMillimeters, toMillimeters);
             }
         }
     }
@@ -33,9 +35,22 @@ public static class FrameTransformHelper
         double localX,
         double localY,
         FrameDefinition oldFrame,
-        FrameDefinition newFrame)
+        FrameDefinition newFrame,
+        FrameAxisScale? fromMillimeters,
+        FrameAxisScale? toMillimeters)
     {
+        if (fromMillimeters is FrameAxisScale fromScale)
+        {
+            (localX, localY) = FrameMillimeters.ToLocalPixels(localX, localY, fromScale);
+        }
+
         var (sensorX, sensorY) = CoordinateTransform.LocalToSensor(localX, localY, oldFrame);
-        return CoordinateTransform.SensorToLocal(sensorX, sensorY, newFrame);
+        (localX, localY) = CoordinateTransform.SensorToLocal(sensorX, sensorY, newFrame);
+        if (toMillimeters is FrameAxisScale toScale)
+        {
+            (localX, localY) = FrameMillimeters.ToMillimeters(localX, localY, toScale);
+        }
+
+        return (localX, localY);
     }
 }

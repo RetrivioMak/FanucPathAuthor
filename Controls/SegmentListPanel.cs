@@ -37,11 +37,11 @@ public partial class SegmentListPanel : UserControl
 
     public void Show(PathDocument document, int? preferredSelection)
     {
-        bool teach = document.Workspace == WorkspaceKind.Teach;
-        double gapThreshold = teach
+        bool millimeters = document.Workspace == WorkspaceKind.Teach || FrameMillimeters.StoresMillimeters(document);
+        double gapThreshold = millimeters
             ? PathSequenceService.TeachGapThresholdMm
             : PathSequenceService.DefaultGapThresholdPx;
-        string gapUnit = teach ? "mm" : "px";
+        string gapUnit = millimeters ? "mm" : "px";
         IReadOnlyList<SequenceGap> gaps = PathSequenceService.AnalyzeGaps(document.Segments);
         int selected = preferredSelection ?? SelectedIndex ?? -1;
 

@@ -54,7 +54,8 @@ public class DxfImportTests : IDisposable
     {
         var importer = new DxfImporter();
         Assert.Null(importer.UnavailableReason(WorkspaceKind.Teach));
-        Assert.Contains("millimeters", importer.UnavailableReason(WorkspaceKind.Cv), StringComparison.Ordinal);
+        Assert.Null(importer.UnavailableReason(WorkspaceKind.Cv));
+        Assert.NotNull(importer.UnavailableReason(WorkspaceKind.Unset));
 
         GeometryImportSurvey survey = importer.Survey(Fixture);
         Assert.Equal(["0", "Notes", "Path", "SkipMe"], survey.Layers);

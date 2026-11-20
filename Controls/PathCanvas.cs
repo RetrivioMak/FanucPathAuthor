@@ -210,8 +210,64 @@ public sealed class PathCanvas : Control
         }
     }
 
-    public string FormatCursor(double sensorX, double sensorY, double localX, double localY) =>
-        _space.FormatCursor(sensorX, sensorY, localX, localY);
+    public string FormatCursor(double sensorX, double sensorY, double localX, double localY)
+    {
+        if (TryStoredScale(out FrameAxisScale scale))
+        {
+            (double mmX, double mmY) = FrameMillimeters.ToMillimeters(localX, localY, scale);
+            return $"sensor ({sensorX:F0},{sensorY:F0})  frame ({mmX:0.000}, {mmY:0.000}) mm";
+        }
+
+        return _space.FormatCursor(sensorX, sensorY, localX, localY);
+    }
+
+    private FrameAxisScale? ActiveMillimeters() =>
+        TryStoredScale(out FrameAxisScale scale) ? scale : null;
+
+    private bool TryStoredScale(out FrameAxisScale scale)
+    {
+        scale = default;
+        return FrameMillimeters.StoresMillimeters(Document) &&
+               FrameMillimeters.TryGetScale(Document.Frame, _mosaicCalibration, out scale);
+    }
+
+    private (double X, double Y) StoredToPixels(double x, double y) =>
+        TryStoredScale(out FrameAxisScale scale)
+            ? FrameMillimeters.ToLocalPixels(x, y, scale)
+            : (x, y);
+
+    private bool CanStorePath()
+    {
+        if (!FrameMillimeters.StoresMillimeters(Document) || TryStoredScale(out _))
+        {
+            return true;
+        }
+
+        StatusMessage?.Invoke(this, "Load calibration before drawing. The CV path is stored in millimeters.");
+        return false;
+    }
+
+    private (double X, double Y) StorePixels(double pixelX, double pixelY) =>
+        TryStoredScale(out FrameAxisScale scale)
+            ? FrameMillimeters.ToMillimeters(pixelX, pixelY, scale)
+            : (pixelX, pixelY);
+
+    private void RebindStoredPath(FrameDefinition oldFrame, FrameDefinition newFrame)
+    {
+        if (FrameMillimeters.StoresMillimeters(Document))
+        {
+            if (!FrameMillimeters.TryGetScale(oldFrame, _mosaicCalibration, out FrameAxisScale oldScale) ||
+                !FrameMillimeters.TryGetScale(newFrame, _mosaicCalibration, out FrameAxisScale newScale))
+            {
+                return;
+            }
+
+            FrameTransformHelper.RebindSegmentsToFrame(Document.Segments, oldFrame, newFrame, oldScale, newScale);
+            return;
+        }
+
+        FrameTransformHelper.RebindSegmentsToFrame(Document.Segments, oldFrame, newFrame);
+    }
 
     private bool HasCanvas => _space.HasSurfaceWithoutImage || _mosaicTiles.Count > 0 || _image != null;
 
@@ -289,7 +345,7 @@ public sealed class PathCanvas : Control
 
         if (moveShapesWithFrame)
         {
-            FrameTransformHelper.RebindSegmentsToFrame(Document.Segments, oldFrame, newFrame);
+            RebindStoredPath(oldFrame, newFrame);
         }
 
         Document.Frame = newFrame;
@@ -333,7 +389,7 @@ public sealed class PathCanvas : Control
         FrameDefinition oldFrame = Document.Frame.Clone();
         FrameDefinition newFrame = oldFrame.Clone();
         newFrame.InvertY = invertY;
-        FrameTransformHelper.RebindSegmentsToFrame(Document.Segments, oldFrame, newFrame);
+        RebindStoredPath(oldFrame, newFrame);
         for (int i = 0; i < _pendingPoints.Count; i++)
         {
             (double sensorX, double sensorY) = CoordinateTransform.LocalToSensor(
@@ -729,7 +785,7 @@ public sealed class PathCanvas : Control
                 sensorX,
                 sensorY,
                 Document.Frame);
-            PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY);
+            PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY, ActiveMillimeters());
             Invalidate();
         }
         else if (HasCanvas)
@@ -880,6 +936,11 @@ public sealed class PathCanvas : Control
 
     private void HandlePolylineClick((double SensorX, double SensorY) sensorPoint, int requiredPoints, SegmentKind kind)
     {
+        if (!CanStorePath())
+        {
+            return;
+        }
+
         (double localX, double localY) = CoordinateTransform.SensorToLocal(
             sensorPoint.SensorX,
             sensorPoint.SensorY,
@@ -900,21 +961,18 @@ public sealed class PathCanvas : Control
         {
             Kind = kind,
             GlueOn = Document.Defaults.GlueOn,
-            Speed_mm_s = Document.Defaults.Speed_mm_s,
-            X1 = _pendingPoints[0].X,
-            Y1 = _pendingPoints[0].Y
+            Speed_mm_s = Document.Defaults.Speed_mm_s
         };
+        (segment.X1, segment.Y1) = StorePixels(_pendingPoints[0].X, _pendingPoints[0].Y);
 
         if (requiredPoints >= 2)
         {
-            segment.X2 = _pendingPoints[1].X;
-            segment.Y2 = _pendingPoints[1].Y;
+            (segment.X2, segment.Y2) = StorePixels(_pendingPoints[1].X, _pendingPoints[1].Y);
         }
 
         if (requiredPoints >= 3)
         {
-            segment.X3 = _pendingPoints[2].X;
-            segment.Y3 = _pendingPoints[2].Y;
+            (segment.X3, segment.Y3) = StorePixels(_pendingPoints[2].X, _pendingPoints[2].Y);
         }
 
         Document.Segments.Add(segment);
@@ -928,6 +986,11 @@ public sealed class PathCanvas : Control
 
     private void HandleRectangleClick((double SensorX, double SensorY) sensorPoint)
     {
+        if (!CanStorePath())
+        {
+            return;
+        }
+
         (double localX, double localY) = CoordinateTransform.SensorToLocal(
             sensorPoint.SensorX,
             sensorPoint.SensorY,
@@ -952,6 +1015,11 @@ public sealed class PathCanvas : Control
             Document.Defaults.GlueOn,
             Document.Defaults.Speed_mm_s);
 
+        foreach (PathSegment line in lines)
+        {
+            FrameMillimeters.ConvertPoints(line, StorePixels);
+        }
+
         Document.Segments.AddRange(lines);
         _pendingPoints.Clear();
         _cursorLocal = null;
@@ -964,6 +1032,11 @@ public sealed class PathCanvas : Control
 
     private void HandleCircleClick((double SensorX, double SensorY) sensorPoint)
     {
+        if (!CanStorePath())
+        {
+            return;
+        }
+
         (double localX, double localY) = CoordinateTransform.SensorToLocal(
             sensorPoint.SensorX,
             sensorPoint.SensorY,
@@ -996,6 +1069,11 @@ public sealed class PathCanvas : Control
 
         CommitUndoSnapshot();
 
+        foreach (PathSegment arc in arcs)
+        {
+            FrameMillimeters.ConvertPoints(arc, StorePixels);
+        }
+
         Document.Segments.AddRange(arcs);
         _pendingPoints.Clear();
         _cursorLocal = null;
@@ -1008,6 +1086,11 @@ public sealed class PathCanvas : Control
 
     private void AddDot(double sensorX, double sensorY)
     {
+        if (!CanStorePath())
+        {
+            return;
+        }
+
         (double localX, double localY) = CoordinateTransform.SensorToLocal(
             sensorX,
             sensorY,
@@ -1015,13 +1098,14 @@ public sealed class PathCanvas : Control
 
         CommitUndoSnapshot();
 
+        (double storedX, double storedY) = StorePixels(localX, localY);
         Document.Segments.Add(new PathSegment
         {
             Kind = SegmentKind.Dot,
             GlueOn = Document.Defaults.GlueOn,
             Speed_mm_s = Document.Defaults.Speed_mm_s,
-            X1 = localX,
-            Y1 = localY
+            X1 = storedX,
+            Y1 = storedY
         });
 
         SelectedSegmentIndex = Document.Segments.Count - 1;
@@ -1053,7 +1137,8 @@ public sealed class PathCanvas : Control
                 sensorY,
                 ImageToScreen,
                 SnapPointHelper.DefaultPickRadiusScreenPx,
-                out VertexPick? pick) ||
+                out VertexPick? pick,
+                ActiveMillimeters()) ||
             pick == null)
         {
             StatusMessage?.Invoke(this, "No point near cursor");
@@ -1090,7 +1175,7 @@ public sealed class PathCanvas : Control
                 hit.X,
                 hit.Y,
                 Document.Frame);
-            PointEditHelper.ApplyDrag(Document, _activeVertexPick, teachLocalX, teachLocalY);
+            PointEditHelper.ApplyDrag(Document, _activeVertexPick, teachLocalX, teachLocalY, ActiveMillimeters());
         }
         else if (SnapToPointEnabled && HasCanvas)
         {
@@ -1105,7 +1190,7 @@ public sealed class PathCanvas : Control
                     sensorX,
                     sensorY,
                     Document.Frame);
-                PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY);
+                PointEditHelper.ApplyDrag(Document, _activeVertexPick, localX, localY, ActiveMillimeters());
             }
         }
 
@@ -1140,7 +1225,7 @@ public sealed class PathCanvas : Control
 
     private void UpdateMoveHover(double sensorX, double sensorY)
     {
-        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document);
+        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document, millimeters: ActiveMillimeters());
         if (SnapPointHelper.TryFindNearestScreen(
                 points,
                 sensorX,
@@ -1168,8 +1253,8 @@ public sealed class PathCanvas : Control
         }
 
         IReadOnlyList<(double SensorX, double SensorY)> points = excludeLocal == null
-            ? SnapPointHelper.CollectSensorPoints(Document)
-            : SnapPointHelper.CollectSensorPointsExcluding(Document, excludeLocal);
+            ? SnapPointHelper.CollectSensorPoints(Document, millimeters: ActiveMillimeters())
+            : SnapPointHelper.CollectSensorPointsExcluding(Document, excludeLocal, millimeters: ActiveMillimeters());
 
         if (SnapPointHelper.TryFindNearestScreen(
                 points,
@@ -1254,7 +1339,7 @@ public sealed class PathCanvas : Control
     private bool ConfirmDuplicateDot(double sensorX, double sensorY)
     {
         double tolerance = _space.PointTolerance;
-        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document, tolerance);
+        IReadOnlyList<(double SensorX, double SensorY)> points = SnapPointHelper.CollectSensorPoints(Document, tolerance, ActiveMillimeters());
         if (!SnapPointHelper.ContainsSensorPoint(points, sensorX, sensorY, tolerance))
         {
             return true;
@@ -1327,8 +1412,9 @@ public sealed class PathCanvas : Control
 
     private bool IsNearSegment(PathSegment segment, double sensorX, double sensorY, double radius)
     {
-        foreach ((double localX, double localY) in GeometryHelper.ExpandSegment(segment))
+        foreach ((double storedX, double storedY) in GeometryHelper.ExpandSegment(segment))
         {
+            (double localX, double localY) = StoredToPixels(storedX, storedY);
             var (sx, sy) = CoordinateTransform.LocalToSensor(localX, localY, Document.Frame);
             double dx = sx - sensorX;
             double dy = sy - sensorY;
@@ -1398,25 +1484,31 @@ public sealed class PathCanvas : Control
             return;
         }
 
-        (double startX, double startY) = PathSequenceService.GetStartPoint(segments[0]);
+        (double startX, double startY) = StoredToPixels(PathSequenceService.GetStartPoint(segments[0]).X, PathSequenceService.GetStartPoint(segments[0]).Y);
         DrawSequenceLabel(g, startX, startY, "1s", Color.LimeGreen);
 
         int lastNumber = segments.Count;
-        (double endX, double endY) = PathSequenceService.GetEndPoint(segments[lastNumber - 1]);
+        (double endStoredX, double endStoredY) = PathSequenceService.GetEndPoint(segments[lastNumber - 1]);
+        (double endX, double endY) = StoredToPixels(endStoredX, endStoredY);
         DrawSequenceLabel(g, endX, endY, $"{lastNumber}e", Color.DeepSkyBlue);
 
+        double gapThreshold = FrameMillimeters.StoresMillimeters(Document)
+            ? PathSequenceService.TeachGapThresholdMm
+            : PathSequenceService.DefaultGapThresholdPx;
         IReadOnlyList<SequenceGap> gaps = PathSequenceService.AnalyzeGaps(segments);
         foreach (SequenceGap gap in gaps)
         {
-            if (!gap.HasGap(PathSequenceService.DefaultGapThresholdPx))
+            if (!gap.HasGap(gapThreshold))
             {
                 continue;
             }
 
             int fromNumber = gap.FromSegmentIndex + 1;
             int toNumber = gap.ToSegmentIndex + 1;
-            DrawSequenceLabel(g, gap.FromX_px, gap.FromY_px, $"{fromNumber}e", Color.OrangeRed);
-            DrawSequenceLabel(g, gap.ToX_px, gap.ToY_px, $"{toNumber}s", Color.OrangeRed);
+            (double fromX, double fromY) = StoredToPixels(gap.FromX_px, gap.FromY_px);
+            (double toX, double toY) = StoredToPixels(gap.ToX_px, gap.ToY_px);
+            DrawSequenceLabel(g, fromX, fromY, $"{fromNumber}e", Color.OrangeRed);
+            DrawSequenceLabel(g, toX, toY, $"{toNumber}s", Color.OrangeRed);
         }
     }
 
@@ -1494,20 +1586,26 @@ public sealed class PathCanvas : Control
             switch (segment.Kind)
             {
                 case SegmentKind.Dot:
-                    DrawPoint(g, brush, segment.X1, segment.Y1, 6);
+                    (double dotX, double dotY) = StoredToPixels(segment.X1, segment.Y1);
+                    DrawPoint(g, brush, dotX, dotY, 6);
                     break;
 
                 case SegmentKind.Line:
-                    DrawLine(g, pen, segment.X1, segment.Y1, segment.X2, segment.Y2);
-                    DrawPoint(g, brush, segment.X1, segment.Y1, 4);
-                    DrawPoint(g, brush, segment.X2, segment.Y2, 4);
+                    (double lineX1, double lineY1) = StoredToPixels(segment.X1, segment.Y1);
+                    (double lineX2, double lineY2) = StoredToPixels(segment.X2, segment.Y2);
+                    DrawLine(g, pen, lineX1, lineY1, lineX2, lineY2);
+                    DrawPoint(g, brush, lineX1, lineY1, 4);
+                    DrawPoint(g, brush, lineX2, lineY2, 4);
                     break;
 
                 case SegmentKind.Arc:
-                    DrawArc(g, pen, segment);
-                    DrawPoint(g, brush, segment.X1, segment.Y1, 4);
-                    DrawPoint(g, brush, segment.X2, segment.Y2, 4);
-                    DrawPoint(g, brush, segment.X3, segment.Y3, 4);
+                    (double arcX1, double arcY1) = StoredToPixels(segment.X1, segment.Y1);
+                    (double arcX2, double arcY2) = StoredToPixels(segment.X2, segment.Y2);
+                    (double arcX3, double arcY3) = StoredToPixels(segment.X3, segment.Y3);
+                    DrawArc(g, pen, arcX1, arcY1, arcX2, arcY2, arcX3, arcY3);
+                    DrawPoint(g, brush, arcX1, arcY1, 4);
+                    DrawPoint(g, brush, arcX2, arcY2, 4);
+                    DrawPoint(g, brush, arcX3, arcY3, 4);
                     break;
             }
         }
@@ -1666,13 +1764,16 @@ public sealed class PathCanvas : Control
         g.FillEllipse(brush, screen.X - radius, screen.Y - radius, radius * 2, radius * 2);
     }
 
-    private void DrawArc(Graphics g, Pen pen, PathSegment segment)
+    private void DrawArc(Graphics g, Pen pen, PathSegment segment) =>
+        DrawArc(g, pen, segment.X1, segment.Y1, segment.X2, segment.Y2, segment.X3, segment.Y3);
+
+    private void DrawArc(Graphics g, Pen pen, double x1, double y1, double x2, double y2, double x3, double y3)
     {
         var points = new[]
         {
-            CoordinateTransform.LocalToSensor(segment.X1, segment.Y1, Document.Frame),
-            CoordinateTransform.LocalToSensor(segment.X2, segment.Y2, Document.Frame),
-            CoordinateTransform.LocalToSensor(segment.X3, segment.Y3, Document.Frame)
+            CoordinateTransform.LocalToSensor(x1, y1, Document.Frame),
+            CoordinateTransform.LocalToSensor(x2, y2, Document.Frame),
+            CoordinateTransform.LocalToSensor(x3, y3, Document.Frame)
         };
 
         if (!TryArcBounds(points[0], points[1], points[2], out RectangleF bounds, out float startAngle, out float sweepAngle))
@@ -1865,6 +1966,24 @@ public sealed class PathCanvas : Control
     {
         _undoRedo.Clear();
         RaiseUndoStateChanged();
+    }
+
+    public void AdoptFrameMillimeters(RobotCalibrationFile? calibration, bool recordUndo)
+    {
+        bool converting = recordUndo &&
+                          Document.SchemaVersion < FrameMillimeters.SchemaVersion &&
+                          Document.Segments.Count > 0 &&
+                          FrameMillimeters.TryGetScale(Document.Frame, calibration, out _);
+        if (converting)
+        {
+            CommitUndoSnapshot();
+        }
+
+        if (FrameMillimeters.Migrate(Document, calibration))
+        {
+            RaiseDocumentChanged();
+            Invalidate();
+        }
     }
 
     public void ResetProject()

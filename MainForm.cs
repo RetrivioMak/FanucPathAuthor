@@ -255,6 +255,15 @@ public partial class MainForm : Form
         }
 
         PathDocument snapshot = _canvas.CreateDocumentSnapshot();
+        if (FrameMillimeters.StoresMillimeters(snapshot) &&
+            FrameMillimeters.TryGetScale(snapshot.Frame, _calibration, out FrameAxisScale scale))
+        {
+            foreach (PathSegment segment in snapshot.Segments)
+            {
+                FrameMillimeters.ConvertPoints(segment, (x, y) => FrameMillimeters.ToLocalPixels(x, y, scale));
+            }
+        }
+
         PathSimulationTimeline timeline = PathSimulationService.BuildTimeline(snapshot);
         _simulation.LoadTimeline(timeline);
         _canvas.SimulationMode = true;
@@ -465,6 +474,7 @@ public partial class MainForm : Form
         ShowProjectPanel(document.Workspace);
         _currentPathFile = filePath;
         TryLoadCalibrationFromDocument(document);
+        MigrateOpenPath(recordUndo: false);
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
@@ -621,7 +631,7 @@ public partial class MainForm : Form
 
         try
         {
-            ApplyLoadedCalibration(CalibrationLoader.Load(dialog.FileName), dialog.FileName);
+            ApplyLoadedCalibration(CalibrationLoader.Load(dialog.FileName), dialog.FileName, recordUndo: true);
             _statusLabel.Text = "Calibration loaded";
         }
         catch (Exception ex)
@@ -727,6 +737,11 @@ public partial class MainForm : Form
             return;
         }
 
+        if (!EnsureMillimeterPath())
+        {
+            return;
+        }
+
         using var fileDialog = new OpenFileDialog
         {
             Filter = importer.FileFilter,
@@ -781,7 +796,9 @@ public partial class MainForm : Form
             _canvas.FitToView();
         }
 
-        _statusLabel.Text = $"Imported {result.Segments.Count} segments.";
+        _statusLabel.Text = FrameMillimeters.StoresMillimeters(_canvas.Document) && _calibration?.PixelToRobot == null
+            ? $"Imported {result.Segments.Count} segments. Load calibration to place them on the image."
+            : $"Imported {result.Segments.Count} segments.";
         if (result.Warnings.Count > 0)
         {
             MessageBox.Show(
@@ -791,6 +808,29 @@ public partial class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
+    }
+
+    private void MigrateOpenPath(bool recordUndo)
+    {
+        _canvas.AdoptFrameMillimeters(_calibration, recordUndo);
+    }
+
+    private bool EnsureMillimeterPath()
+    {
+        MigrateOpenPath(recordUndo: true);
+        if (_canvas.Document.Workspace != WorkspaceKind.Cv ||
+            _canvas.Document.SchemaVersion >= FrameMillimeters.SchemaVersion)
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            this,
+            "Load calibration before importing a DXF. The current CV path is still stored in pixels.",
+            "Import DXF",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+        return false;
     }
 
     private void BuildExporterMenu()
@@ -1068,7 +1108,7 @@ public partial class MainForm : Form
         }
     }
 
-    private void ApplyLoadedCalibration(RobotCalibrationFile calibration, string path)
+    private void ApplyLoadedCalibration(RobotCalibrationFile calibration, string path, bool recordUndo = false)
     {
         _calibration = calibration;
         _calibrationPath = path;
@@ -1083,6 +1123,7 @@ public partial class MainForm : Form
         }
 
         _canvas.SetMosaicCalibration(_calibration);
+        MigrateOpenPath(recordUndo);
         RefreshTileList();
         RefreshWaypointPreview();
     }

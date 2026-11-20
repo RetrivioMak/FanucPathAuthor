@@ -19,9 +19,9 @@ public sealed class DxfImporter : IGeometryImporter
     public string FileFilter => "DXF drawing (*.dxf)|*.dxf|All files (*.*)|*.*";
 
     public string? UnavailableReason(WorkspaceKind workspace) =>
-        workspace == WorkspaceKind.Teach
+        workspace is WorkspaceKind.Cv or WorkspaceKind.Teach
             ? null
-            : "DXF import is available for Teach projects. It will be enabled for CV when the path is stored in millimeters.";
+            : "Choose a project before importing a drawing.";
 
     public GeometryImportSurvey Survey(string sourcePath)
     {

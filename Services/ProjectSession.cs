@@ -63,7 +63,7 @@ public sealed class ProjectSession
     private static void Initialize(PathDocument document, WorkspaceKind kind)
     {
         document.Workspace = kind;
-        document.SchemaVersion = Math.Max(document.SchemaVersion, 4);
+        document.SchemaVersion = Math.Max(document.SchemaVersion, FrameMillimeters.SchemaVersion);
         if (kind != WorkspaceKind.Teach)
         {
             return;

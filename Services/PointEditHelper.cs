@@ -33,7 +33,8 @@ public static class PointEditHelper
         double sensorY,
         Func<double, double, PointF> sensorToScreen,
         double pickRadiusScreenPx,
-        out VertexPick? pick)
+        out VertexPick? pick,
+        FrameAxisScale? millimeters = null)
     {
         pick = null;
         if (document.Segments.Count == 0)
@@ -41,13 +42,14 @@ public static class PointEditHelper
             return false;
         }
 
+        IReadOnlyList<PathSegment> geometry = PixelGeometry(document, millimeters);
         PointF clickScreen = sensorToScreen(sensorX, sensorY);
         double bestDist = double.MaxValue;
         VertexPick? bestPick = null;
 
-        for (int segmentIndex = 0; segmentIndex < document.Segments.Count; segmentIndex++)
+        for (int segmentIndex = 0; segmentIndex < geometry.Count; segmentIndex++)
         {
-            PathSegment segment = document.Segments[segmentIndex];
+            PathSegment segment = geometry[segmentIndex];
             foreach (int pointSlot in GetPointSlots(segment.Kind))
             {
                 (double localX, double localY) = GetPoint(segment, pointSlot);
@@ -63,11 +65,11 @@ public static class PointEditHelper
                 }
 
                 bestDist = dist;
-                bestPick = CreateVertexPick(document, segmentIndex, pointSlot, localX, localY);
+                bestPick = CreateVertexPick(document, geometry, segmentIndex, pointSlot, localX, localY);
             }
         }
 
-        foreach ((int indexA, int indexB, double centerX, double centerY, double radius) in EnumerateCircles(document.Segments))
+        foreach ((int indexA, int indexB, double centerX, double centerY, double radius) in EnumerateCircles(geometry))
         {
             var (centerSensorX, centerSensorY) = CoordinateTransform.LocalToSensor(
                 centerX,
@@ -104,8 +106,30 @@ public static class PointEditHelper
         return true;
     }
 
-    public static void ApplyDrag(PathDocument document, VertexPick pick, double newLocalX, double newLocalY)
+    public static void ApplyDrag(
+        PathDocument document,
+        VertexPick pick,
+        double newLocalX,
+        double newLocalY,
+        FrameAxisScale? millimeters = null)
     {
+        if (millimeters is FrameAxisScale scale)
+        {
+            var pixelDocument = new PathDocument
+            {
+                Workspace = document.Workspace,
+                Frame = document.Frame
+            };
+            pixelDocument.Segments.AddRange(document.Segments.Select(segment => PixelCopy(segment, scale)));
+            ApplyDrag(pixelDocument, pick, newLocalX, newLocalY);
+            for (int i = 0; i < document.Segments.Count && i < pixelDocument.Segments.Count; i++)
+            {
+                CopyStoredGeometry(document.Segments[i], pixelDocument.Segments[i], scale);
+            }
+
+            return;
+        }
+
         switch (pick.Mode)
         {
             case VertexDragMode.SharedPoint:
@@ -145,12 +169,13 @@ public static class PointEditHelper
 
     private static VertexPick CreateVertexPick(
         PathDocument document,
+        IReadOnlyList<PathSegment> geometry,
         int segmentIndex,
         int pointSlot,
         double localX,
         double localY)
     {
-        if (TryGetCircleForArc(document.Segments, segmentIndex, out int arcA, out int arcB, out double centerX, out double centerY, out double radius))
+        if (TryGetCircleForArc(geometry, segmentIndex, out int arcA, out int arcB, out double centerX, out double centerY, out double radius))
         {
             return new VertexPick
             {
@@ -166,7 +191,7 @@ public static class PointEditHelper
             };
         }
 
-        PathSegment segment = document.Segments[segmentIndex];
+        PathSegment segment = geometry[segmentIndex];
         if (segment.Kind == SegmentKind.Arc)
         {
             return new VertexPick
@@ -179,7 +204,7 @@ public static class PointEditHelper
         }
 
         IReadOnlyList<(int SegmentIndex, int PointSlot)> bindings =
-            FindBindingsAt(document, localX, localY);
+            FindBindingsAt(document.Workspace, geometry, localX, localY);
 
         return new VertexPick
         {
@@ -191,15 +216,16 @@ public static class PointEditHelper
     }
 
     private static IReadOnlyList<(int SegmentIndex, int PointSlot)> FindBindingsAt(
-        PathDocument document,
+        WorkspaceKind workspace,
+        IReadOnlyList<PathSegment> segments,
         double localX,
         double localY)
     {
-        double tolerance = document.Workspace == WorkspaceKind.Teach ? 1e-4 : PointTolerance;
+        double tolerance = workspace == WorkspaceKind.Teach ? 1e-4 : PointTolerance;
         var bindings = new List<(int SegmentIndex, int PointSlot)>();
-        for (int segmentIndex = 0; segmentIndex < document.Segments.Count; segmentIndex++)
+        for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
         {
-            PathSegment segment = document.Segments[segmentIndex];
+            PathSegment segment = segments[segmentIndex];
             foreach (int pointSlot in GetPointSlots(segment.Kind))
             {
                 (double pointX, double pointY) = GetPoint(segment, pointSlot);
@@ -463,5 +489,28 @@ public static class PointEditHelper
         double dx = a.X - b.X;
         double dy = a.Y - b.Y;
         return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    private static IReadOnlyList<PathSegment> PixelGeometry(PathDocument document, FrameAxisScale? millimeters) =>
+        millimeters is FrameAxisScale scale
+            ? document.Segments.Select(segment => PixelCopy(segment, scale)).ToList()
+            : document.Segments;
+
+    private static PathSegment PixelCopy(PathSegment segment, FrameAxisScale scale)
+    {
+        PathSegment copy = DocumentClone.CloneSegment(segment);
+        FrameMillimeters.ConvertPoints(copy, (x, y) => FrameMillimeters.ToLocalPixels(x, y, scale));
+        return copy;
+    }
+
+    private static void CopyStoredGeometry(PathSegment target, PathSegment pixelSource, FrameAxisScale scale)
+    {
+        FrameMillimeters.ConvertPoints(pixelSource, (x, y) => FrameMillimeters.ToMillimeters(x, y, scale));
+        target.X1 = pixelSource.X1;
+        target.Y1 = pixelSource.Y1;
+        target.X2 = pixelSource.X2;
+        target.Y2 = pixelSource.Y2;
+        target.X3 = pixelSource.X3;
+        target.Y3 = pixelSource.Y3;
     }
 }

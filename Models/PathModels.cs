@@ -79,7 +79,8 @@ public sealed class PathSegment
     public bool GlueOn { get; set; } = true;
     public double Speed_mm_s { get; set; } = 50;
 
-    // All coordinates are frame-local pixels (integer-friendly).
+    // Teach, and CV from schema 6: millimeters along the project frame.
+    // Older CV documents: frame-local pixels, migrated when calibration is known.
     public double X1 { get; set; }
     public double Y1 { get; set; }
     public double X2 { get; set; }

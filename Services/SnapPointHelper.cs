@@ -8,14 +8,16 @@ public static class SnapPointHelper
 
     public static IReadOnlyList<(double SensorX, double SensorY)> CollectSensorPoints(
         PathDocument document,
-        double uniqueTolerance = 0.5)
+        double uniqueTolerance = 0.5,
+        FrameAxisScale? millimeters = null)
     {
         var points = new List<(double SensorX, double SensorY)>();
         foreach (PathSegment segment in document.Segments)
         {
             foreach ((double localX, double localY) in GeometryHelper.ExpandSegment(segment))
             {
-                var sensor = CoordinateTransform.LocalToSensor(localX, localY, document.Frame);
+                (double pixelX, double pixelY) = ToPixels(localX, localY, millimeters);
+                var sensor = CoordinateTransform.LocalToSensor(pixelX, pixelY, document.Frame);
                 AddUnique(points, sensor.X, sensor.Y, uniqueTolerance);
             }
         }
@@ -26,7 +28,8 @@ public static class SnapPointHelper
     public static IReadOnlyList<(double SensorX, double SensorY)> CollectSensorPointsExcluding(
         PathDocument document,
         IEnumerable<(double LocalX, double LocalY)> excludeLocal,
-        double uniqueTolerance = 0.5)
+        double uniqueTolerance = 0.5,
+        FrameAxisScale? millimeters = null)
     {
         var exclude = excludeLocal.ToList();
         var points = new List<(double SensorX, double SensorY)>();
@@ -39,13 +42,19 @@ public static class SnapPointHelper
                     continue;
                 }
 
-                var sensor = CoordinateTransform.LocalToSensor(localX, localY, document.Frame);
+                (double pixelX, double pixelY) = ToPixels(localX, localY, millimeters);
+                var sensor = CoordinateTransform.LocalToSensor(pixelX, pixelY, document.Frame);
                 AddUnique(points, sensor.X, sensor.Y, uniqueTolerance);
             }
         }
 
         return points;
     }
+
+    private static (double X, double Y) ToPixels(double x, double y, FrameAxisScale? millimeters) =>
+        millimeters is FrameAxisScale scale
+            ? FrameMillimeters.ToLocalPixels(x, y, scale)
+            : (x, y);
 
     public static bool ContainsSensorPoint(
         IReadOnlyList<(double SensorX, double SensorY)> points,
