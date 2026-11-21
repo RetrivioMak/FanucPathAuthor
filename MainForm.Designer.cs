@@ -47,7 +47,7 @@ partial class MainForm
         _canvasHost = new Panel();
         _rightPanel = new Panel();
         _rightLayout = new TableLayoutPanel();
-        _projectHost = new Panel();
+        _frameHost = new Panel();
         _commonTabs = new TabControl();
         _segmentsPage = new TabPage();
         _segmentListPanel = new Controls.SegmentListPanel();
@@ -179,20 +179,25 @@ partial class MainForm
         _commonTabs.Controls.Add(_segmentsPage);
         _commonTabs.Controls.Add(_previewPage);
         _commonTabs.Dock = DockStyle.Fill;
+        _commonTabs.Margin = new Padding(0);
         _commonTabs.Name = "commonTabs";
 
-        _projectHost.Dock = DockStyle.Fill;
-        _projectHost.Name = "projectHost";
+        _frameHost.AutoSize = true;
+        _frameHost.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        _frameHost.Dock = DockStyle.Fill;
+        _frameHost.Margin = new Padding(0);
+        _frameHost.Name = "frameHost";
+        _frameHost.Visible = false;
 
         _rightLayout.ColumnCount = 1;
         _rightLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        _rightLayout.Controls.Add(_projectHost, 0, 0);
+        _rightLayout.Controls.Add(_frameHost, 0, 0);
         _rightLayout.Controls.Add(_commonTabs, 0, 1);
         _rightLayout.Dock = DockStyle.Fill;
         _rightLayout.Name = "rightLayout";
         _rightLayout.RowCount = 2;
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 46F));
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 54F));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
         _rightPanel.Controls.Add(_rightLayout);
         _rightPanel.Dock = DockStyle.Right;
@@ -227,6 +232,7 @@ partial class MainForm
         _segmentsPage.ResumeLayout(false);
         _commonTabs.ResumeLayout(false);
         _rightLayout.ResumeLayout(false);
+        _rightLayout.PerformLayout();
         _rightPanel.ResumeLayout(false);
         _statusStrip.ResumeLayout(false);
         _statusStrip.PerformLayout();
@@ -267,7 +273,7 @@ partial class MainForm
     private Panel _canvasHost = null!;
     private Panel _rightPanel = null!;
     private TableLayoutPanel _rightLayout = null!;
-    private Panel _projectHost = null!;
+    private Panel _frameHost = null!;
     private TabControl _commonTabs = null!;
     private TabPage _segmentsPage = null!;
     private Controls.SegmentListPanel _segmentListPanel = null!;

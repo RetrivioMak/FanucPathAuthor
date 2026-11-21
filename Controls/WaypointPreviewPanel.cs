@@ -9,6 +9,18 @@ public partial class WaypointPreviewPanel : UserControl
         InitializeComponent();
     }
 
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        int textWidth = Math.Max(120, ClientSize.Width - 8);
+        var limit = new Size(textWidth, 0);
+        if (_summaryLabel.MaximumSize != limit)
+        {
+            _summaryLabel.MaximumSize = limit;
+        }
+
+        base.OnLayout(e);
+    }
+
     public void Show(string summary, IReadOnlyList<RobotWaypoint> waypoints)
     {
         _summaryLabel.Text = summary;

@@ -20,13 +20,34 @@
     <GenerateTargetFrameworkAttribute>true</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
-  <!-- SDK includes all *.cs recursively; keep the test project out of the WinExe build. -->
+  <!-- SDK includes all *.cs recursively; keep the test project and plugin projects out of the WinExe build. -->
   <ItemGroup>
     <Compile Remove="DispensePathAuthor.Tests\**" />
+    <Compile Remove="DispensePathAuthor.Contracts\**" />
+    <Compile Remove="DispensePathAuthor.Xyz\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Tests\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Contracts\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Xyz\**" />
     <None Remove="DispensePathAuthor.Tests\**" />
+    <None Remove="DispensePathAuthor.Contracts\**" />
+    <None Remove="DispensePathAuthor.Xyz\**" />
     <Content Remove="DispensePathAuthor.Tests\**" />
+    <Content Remove="DispensePathAuthor.Contracts\**" />
+    <Content Remove="DispensePathAuthor.Xyz\**" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="DispensePathAuthor.Contracts\DispensePathAuthor.Contracts.csproj" />
+    <ProjectReference Include="DispensePathAuthor.Xyz\DispensePathAuthor.Xyz.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>PluginAssembly</OutputItemType>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="CopyPlugins" AfterTargets="Build">
+    <Copy SourceFiles="@(PluginAssembly)" DestinationFolder="$(TargetDir)plugins" SkipUnchangedFiles="true" />
+  </Target>
 
   <!-- DXF types are used only by Services/DxfImporter.cs. -->
   <ItemGroup>

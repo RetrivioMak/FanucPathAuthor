@@ -5,7 +5,10 @@ namespace DispensePathAuthor.Controls;
 
 public partial class CvProjectPanel : UserControl
 {
+    private const int TileListMinHeight = 96;
+
     private bool _updating;
+    private bool _fitting;
     private PathDocument? _document;
     private RobotCalibrationFile? _calibration;
 
@@ -138,6 +141,41 @@ public partial class CvProjectPanel : UserControl
 
     public void EndEdit() => SetFrameEditing(false);
 
+    public void MountFrame(Control host)
+    {
+        if (_frameGroup.Parent != host)
+        {
+            host.Controls.Add(_frameGroup);
+        }
+
+        _frameGroup.Dock = DockStyle.Top;
+        _frameGroup.Margin = new Padding(8, 8, 8, 0);
+        if (_layout.RowStyles.Count > 0)
+        {
+            _layout.RowStyles[0] = new RowStyle(SizeType.Absolute, 0F);
+        }
+    }
+
+    public void RestoreFrame()
+    {
+        if (_frameGroup.IsDisposed)
+        {
+            return;
+        }
+
+        if (_frameGroup.Parent != _layout)
+        {
+            _layout.Controls.Add(_frameGroup, 0, 0);
+        }
+
+        _frameGroup.Dock = DockStyle.Fill;
+        _frameGroup.Margin = new Padding(0, 0, 0, 8);
+        if (_layout.RowStyles.Count > 0)
+        {
+            _layout.RowStyles[0] = new RowStyle(SizeType.AutoSize);
+        }
+    }
+
     public void SetCalibrationText(string text) => _calibrationLabel.Text = text;
 
     public void ShowTiles(PathDocument document, RobotCalibrationFile? calibration)
@@ -219,7 +257,7 @@ public partial class CvProjectPanel : UserControl
         _openImageButton.Visible = !hasTiles;
         _openImageButton.Enabled = true;
         _addFovButton.Visible = hasTiles;
-        _addFovButton.Enabled = TileDocumentHelper.CanAddAnotherFovImage(document);
+        _addFovButton.Enabled = true;
     }
 
     private void SyncTileEditors(PathDocument document, RobotCalibrationFile? calibration)
@@ -228,8 +266,8 @@ public partial class CvProjectPanel : UserControl
         SetTileEditorsEnabled(tile != null);
         if (tile == null)
         {
-            _offsetLabel.Text = "Canvas offset: ¡ª";
-            _worldLabel.Text = "Tile (0,0) world: ¡ª";
+            _offsetLabel.Text = "Canvas offset: â€”";
+            _worldLabel.Text = "Tile (0,0) world: â€”";
             return;
         }
 
@@ -244,8 +282,8 @@ public partial class CvProjectPanel : UserControl
         FovTile? anchor = TileDocumentHelper.GetAnchor(document);
         if (anchor == null)
         {
-            _offsetLabel.Text = "Canvas offset: ¡ª";
-            _worldLabel.Text = "Tile (0,0) world: ¡ª";
+            _offsetLabel.Text = "Canvas offset: â€”";
+            _worldLabel.Text = "Tile (0,0) world: â€”";
             return;
         }
 
@@ -262,7 +300,7 @@ public partial class CvProjectPanel : UserControl
             _worldLabel.Text = $"Tile (0,0) world: ({worldX:0.##}, {worldY:0.##}) mm";
             if (tile.Id == anchor.Id)
             {
-                _offsetLabel.Text = "Canvas offset: (0, 0) px ¡ª anchor";
+                _offsetLabel.Text = "Canvas offset: (0, 0) px â€” anchor";
                 return;
             }
 
@@ -272,7 +310,7 @@ public partial class CvProjectPanel : UserControl
         catch (Exception ex)
         {
             _offsetLabel.Text = $"Canvas offset: {ex.Message}";
-            _worldLabel.Text = "Tile (0,0) world: ¡ª";
+            _worldLabel.Text = "Tile (0,0) world: â€”";
         }
     }
 
@@ -295,6 +333,94 @@ public partial class CvProjectPanel : UserControl
         {
             TilePoseChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        if (!_fitting)
+        {
+            _fitting = true;
+            try
+            {
+                FitToClient();
+            }
+            finally
+            {
+                _fitting = false;
+            }
+        }
+
+        base.OnLayout(e);
+    }
+
+    private void FitToClient()
+    {
+        int clientWidth = ClientSize.Width - Padding.Horizontal;
+        int viewportHeight = ClientSize.Height - Padding.Vertical;
+        if (clientWidth < 160 || viewportHeight < 80 || _layout.RowStyles.Count < 2)
+        {
+            return;
+        }
+
+        ApplyTextWidth(clientWidth);
+        int contentHeight = MeasureStackedHeight(clientWidth);
+        if (contentHeight > viewportHeight)
+        {
+            clientWidth = Math.Max(160, clientWidth - SystemInformation.VerticalScrollBarWidth);
+            ApplyTextWidth(clientWidth);
+            contentHeight = MeasureStackedHeight(clientWidth);
+        }
+
+        int listHeight = TileListMinHeight + Math.Max(0, viewportHeight - contentHeight);
+        _tileList.MinimumSize = new Size(0, listHeight);
+        RowStyle listRow = _layout.RowStyles[1];
+        if (listRow.SizeType != SizeType.Absolute || Math.Abs(listRow.Height - listHeight) > 1f)
+        {
+            _layout.RowStyles[1] = new RowStyle(SizeType.Absolute, listHeight);
+        }
+    }
+
+    private int MeasureStackedHeight(int width)
+    {
+        var proposed = new Size(width, 0);
+        bool frameInside = _frameGroup.Parent == _layout;
+        int frameHeight = _frameLayout.GetPreferredSize(proposed).Height
+            + _frameGroup.Padding.Vertical
+            + _frameGroup.Font.Height
+            + 8;
+        if (Math.Abs(_frameGroup.MinimumSize.Height - frameHeight) > 2)
+        {
+            _frameGroup.MinimumSize = new Size(0, frameHeight);
+        }
+
+        if (!frameInside)
+        {
+            frameHeight = 0;
+        }
+
+        int poseHeight = _poseStack.GetPreferredSize(proposed).Height
+            + _poseGroup.Padding.Vertical
+            + _poseGroup.Font.Height
+            + 8;
+        if (Math.Abs(_poseGroup.MinimumSize.Height - poseHeight) > 2)
+        {
+            _poseGroup.MinimumSize = new Size(0, poseHeight);
+        }
+        return frameHeight + _frameGroup.Margin.Vertical
+            + TileListMinHeight + _tileList.Margin.Vertical
+            + _tileBottom.GetPreferredSize(proposed).Height + _tileBottom.Margin.Vertical
+            + _calibrationLabel.GetPreferredSize(proposed).Height + _calibrationLabel.Margin.Vertical;
+    }
+
+    private void ApplyTextWidth(int clientWidth)
+    {
+        int textWidth = Math.Max(140, clientWidth - 56);
+        var limit = new Size(textWidth, 0);
+        _invertHint.MaximumSize = limit;
+        _captureHint.MaximumSize = limit;
+        _offsetLabel.MaximumSize = limit;
+        _worldLabel.MaximumSize = limit;
+        _calibrationLabel.MaximumSize = limit;
     }
 
     private void SetFrameEditing(bool enabled)

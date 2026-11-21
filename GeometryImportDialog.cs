@@ -4,7 +4,7 @@ namespace DispensePathAuthor;
 
 public partial class GeometryImportDialog : Form
 {
-    private static readonly string[] UnitLabels = ["?m", "mm", "cm", "m", "in", "ft"];
+    private static readonly string[] UnitLabels = ["µm", "mm", "cm", "m", "in", "ft"];
 
     public IReadOnlyList<string> SelectedLayers { get; private set; } = Array.Empty<string>();
 

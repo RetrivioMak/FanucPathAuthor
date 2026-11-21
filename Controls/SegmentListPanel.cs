@@ -66,7 +66,7 @@ public partial class SegmentListPanel : UserControl
                 }
                 else
                 {
-                    item.SubItems.Add("¡ª");
+                    item.SubItems.Add("â€”");
                 }
 
                 item.Tag = i;
@@ -113,7 +113,7 @@ public partial class SegmentListPanel : UserControl
         string limit = unit == "mm" ? threshold.ToString("0.###") : threshold.ToString("F0");
         if (gapCount == 0)
         {
-            _gapSummaryLabel.Text = $"Sequence: all connected (¡Ü {limit} {unit})";
+            _gapSummaryLabel.Text = $"Sequence: all connected (â‰¤ {limit} {unit})";
             _gapSummaryLabel.ForeColor = Color.DimGray;
             return;
         }

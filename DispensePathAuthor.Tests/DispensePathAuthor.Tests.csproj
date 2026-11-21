@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DispensePathAuthor.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Xyz\DispensePathAuthor.Xyz.csproj" />
   </ItemGroup>
 
   <ItemGroup>

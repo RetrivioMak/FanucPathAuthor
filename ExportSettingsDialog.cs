@@ -1,3 +1,5 @@
+using System.Text.Json;
+using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 
@@ -29,17 +31,23 @@ public partial class ExportSettingsDialog : Form
     private readonly Label _calibrationInfo;
     private TableLayoutPanel? _root;
     private readonly List<GroupBox> _sectionGroups = new();
+    private readonly List<PluginPage> _pluginPages;
 
     public ProcessDefaults Result { get; private set; } = new();
     public FanucLsSettings FanucResult { get; private set; } = new();
+    public IReadOnlyDictionary<string, JsonElement> PluginSections { get; private set; } =
+        new Dictionary<string, JsonElement>();
 
     public ExportSettingsDialog(
         ProcessDefaults current,
         FanucLsSettings fanuc,
         RobotCalibrationFile? calibration,
-        bool teachWorkspace = false)
+        bool teachWorkspace = false,
+        IEnumerable<IProgramExporter>? exporters = null,
+        ExporterSettings? exporterSettings = null)
     {
         _sourceDefaults = current;
+        _pluginPages = CreatePages(exporters, exporterSettings);
 
         _modeAbsolute = new RadioButton
         {
@@ -216,6 +224,11 @@ public partial class ExportSettingsDialog : Form
         AddSection(content, BuildFovGroup());
         AddSection(content, BuildAngleGroup());
         AddSection(content, BuildNeedleGroup());
+        foreach (PluginPage page in _pluginPages)
+        {
+            AddSection(content, WrapGroupBox(page.Title, page.Control));
+        }
+
         content.Controls.Add(_calibrationInfo);
 
         _root.Controls.Add(content, 0, 0);
@@ -510,6 +523,13 @@ public partial class ExportSettingsDialog : Form
             UserFrame = (int)_userFrame.Value,
             UserTool = (int)_userTool.Value
         };
+        var sections = new Dictionary<string, JsonElement>();
+        foreach (PluginPage page in _pluginPages)
+        {
+            sections[page.Id] = page.Editor.SaveSection();
+        }
+
+        PluginSections = sections;
     }
 
     private void UpdateCalibrationInfo(RobotCalibrationFile? calibration)
@@ -567,6 +587,31 @@ public partial class ExportSettingsDialog : Form
 
         return ExportLocalRotation.None;
     }
+
+    private static List<PluginPage> CreatePages(IEnumerable<IProgramExporter>? exporters, ExporterSettings? settings)
+    {
+        var pages = new List<PluginPage>();
+        if (exporters == null || settings == null)
+        {
+            return pages;
+        }
+
+        foreach (IProgramExporter exporter in exporters)
+        {
+            if (exporter.CreateSettingsPage() is not UserControl control ||
+                control is not IExporterSettingsPage editor)
+            {
+                continue;
+            }
+
+            editor.LoadSection(settings.Section(exporter.Id));
+            pages.Add(new PluginPage(exporter.Id, exporter.SettingsTitle, control, editor));
+        }
+
+        return pages;
+    }
+
+    private sealed record PluginPage(string Id, string Title, UserControl Control, IExporterSettingsPage Editor);
 
     private void SetNeedleEditorsEnabled(bool enabled)
     {

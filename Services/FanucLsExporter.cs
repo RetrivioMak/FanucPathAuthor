@@ -1,3 +1,4 @@
+using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Models;
 
 namespace DispensePathAuthor.Services;
@@ -8,23 +9,34 @@ public sealed class FanucLsExporter : IProgramExporter
 
     public string MenuLabel => "Export Fanuc .LS...";
 
+    public string SettingsTitle => "Fanuc .LS";
+
     public string FileFilter => "Fanuc LS|*.LS;*.ls";
 
     public string DefaultFileName => "GLUE_PATH.LS";
 
-    public string? Validate(PathDocument document, RobotCalibrationFile? calibration)
+    public IReadOnlyList<string> RequiredChannels { get; } = ["X", "Y"];
+
+    public UserControl? CreateSettingsPage() => null;
+
+    public string? Validate(ProgramExportRequest request)
     {
-        if (document.Workspace == WorkspaceKind.Teach)
+        if (request.Host is not ExportHost host)
+        {
+            return "Fanuc export is missing the project.";
+        }
+
+        if (host.Document.Workspace == WorkspaceKind.Teach)
         {
             return null;
         }
 
-        if (calibration?.PixelToRobot == null)
+        if (host.Calibration?.PixelToRobot == null)
         {
             return "Load a calibration JSON file first.";
         }
 
-        if (document.Exporters.FanucLs.CoordinateMode != ExportCoordinateMode.UframeAbsolute)
+        if (host.Document.Exporters.FanucLs.CoordinateMode != ExportCoordinateMode.UframeAbsolute)
         {
             return "Fanuc .LS export requires UFRAME / UTOOL absolute mode. Switch export settings or use CSV for offset modes.";
         }
@@ -34,19 +46,24 @@ public sealed class FanucLsExporter : IProgramExporter
 
     public void Export(ProgramExportRequest request)
     {
-        IReadOnlyList<RobotWaypoint> trajectory = GeometryHelper.BuildWaypoints(request.Document, request.Calibration);
+        if (request.Host is not ExportHost host)
+        {
+            throw new InvalidOperationException("Fanuc export is missing the project.");
+        }
+
+        IReadOnlyList<RobotWaypoint> trajectory = GeometryHelper.BuildWaypoints(host.Document, host.Calibration);
         if (trajectory.Count == 0)
         {
             throw new InvalidOperationException("No waypoints to export.");
         }
 
-        FanucLsSettings settings = request.Document.Exporters.FanucLs;
+        FanucLsSettings settings = host.Document.Exporters.FanucLs;
         FanucExporter.ExportLs(
             trajectory,
-            request.Calibration,
+            host.Calibration,
             Path.GetFileNameWithoutExtension(request.DestinationPath),
             request.DestinationPath,
-            applyFrameYReflection: request.Document.Workspace != WorkspaceKind.Teach,
+            applyFrameYReflection: host.Document.Workspace != WorkspaceKind.Teach,
             userFrame: settings.UserFrame,
             userTool: settings.UserTool);
     }

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Controls;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
@@ -11,7 +13,12 @@ public partial class MainForm : Form
     private readonly PathSimulationController _simulation = new();
     private CvProjectPanel? _cvPanel;
     private TeachProjectPanel? _teachPanel;
+    private TabPage? _projectPage;
 
+    private readonly IReadOnlyList<string>? _pluginNotes;
+    private bool _offerStartup;
+    private bool _startupOffered;
+    private bool _pluginsShown;
     private ProjectSession? _session;
     private RobotCalibrationFile? _draftCalibration;
     private string? _draftCalibrationPath;
@@ -84,13 +91,34 @@ public partial class MainForm : Form
         UpdateUndoMenuState();
         SetActiveTool(DrawTool.Dot);
         _canvas.ResolveStoredFile = ResolveStoredFile;
-        _statusLabel.Text = "Open an FOV image or add teach points to begin.";
+        _statusLabel.Text = "Choose a project to begin.";
     }
 
-    public MainForm(ProjectStart start)
+    public MainForm(IReadOnlyList<string> pluginNotes)
         : this()
     {
+        _pluginNotes = pluginNotes;
+        _offerStartup = true;
+    }
+
+    public MainForm(ProjectStart start, IReadOnlyList<string>? pluginNotes = null)
+        : this()
+    {
+        _pluginNotes = pluginNotes;
         ApplyProjectStart(start);
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (_offerStartup && !_startupOffered)
+        {
+            _startupOffered = true;
+            BeginInvoke(OfferStartup);
+            return;
+        }
+
+        ShowPluginNotes();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -359,15 +387,15 @@ public partial class MainForm : Form
         }
 
         PathDocument document = _canvas.Document;
-        if (document.Tiles.Count == 1 && !document.FrameIsDefined)
+        if (!TileDocumentHelper.CanAddAnotherFovImage(document))
         {
             MessageBox.Show(
                 this,
-                "Define the Frame on the anchor FOV before adding another image.\n\n" +
-                "Use the Frame tool on the canvas, then click Apply.",
-                "Multi-FOV mosaic",
+                "The Frame is not defined yet, so another FOV image cannot be added.\n\n" +
+                "In Frame (sensor px) above the tabs, click Edit Frame, set the origin on the anchor image, then click Apply.",
+                "Frame is not defined",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                MessageBoxIcon.Warning);
             return;
         }
 
@@ -575,7 +603,9 @@ public partial class MainForm : Form
             _canvas.Document.Defaults,
             _canvas.Document.Exporters.FanucLs,
             _calibration,
-            _canvas.Document.Workspace == WorkspaceKind.Teach);
+            _canvas.Document.Workspace == WorkspaceKind.Teach,
+            ExporterRegistry.Exporters,
+            _canvas.Document.Exporters);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return false;
@@ -583,6 +613,11 @@ public partial class MainForm : Form
 
         ApplyProcessDefaults(dialog.Result);
         ApplyFanucSettings(dialog.FanucResult);
+        foreach ((string id, JsonElement section) in dialog.PluginSections)
+        {
+            _canvas.Document.Exporters.SetSection(id, section);
+        }
+
         return true;
     }
 
@@ -675,7 +710,7 @@ public partial class MainForm : Form
             return;
         }
 
-        string? error = exporter.Validate(_canvas.Document, _calibration);
+        string? error = exporter.Validate(CreateExportRequest(exporter, string.Empty));
         if (error != null)
         {
             MessageBox.Show(this, error, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -700,18 +735,31 @@ public partial class MainForm : Form
 
         try
         {
-            exporter.Export(new ProgramExportRequest
-            {
-                Document = _canvas.CreateDocumentSnapshot(),
-                Calibration = _calibration,
-                DestinationPath = dialog.FileName
-            });
+            exporter.Export(CreateExportRequest(exporter, dialog.FileName));
             _statusLabel.Text = $"Exported: {dialog.FileName}";
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private ProgramExportRequest CreateExportRequest(IProgramExporter exporter, string destination)
+    {
+        PathDocument snapshot = _canvas.CreateDocumentSnapshot();
+        FrameTrajectoryResult trajectory = FrameTrajectory.Build(snapshot, _calibration);
+        return new ProgramExportRequest
+        {
+            Moves = trajectory.Moves,
+            Settings = snapshot.Exporters.Section(exporter.Id),
+            DestinationPath = destination,
+            TrajectoryError = trajectory.Error,
+            Host = new ExportHost
+            {
+                Document = snapshot,
+                Calibration = _calibration
+            }
+        };
     }
 
     private void BuildImporterMenu()
@@ -1135,27 +1183,78 @@ public partial class MainForm : Form
         _canvas.UseSpace(kind == WorkspaceKind.Teach
             ? new TeachCanvasSpace()
             : new CvCanvasSpace());
-        _projectHost.Controls.Clear();
         if (kind == WorkspaceKind.Cv)
         {
             DisposeProjectPanel(ref _teachPanel);
             _cvPanel ??= CreateCvPanel();
-            _cvPanel.Dock = DockStyle.Fill;
-            _projectHost.Controls.Add(_cvPanel);
+            _cvPanel.MountFrame(_frameHost);
+            SetFrameHostVisible(true);
+            AttachProjectPage("FOV Tiles", _cvPanel);
             return;
         }
 
+        SetFrameHostVisible(false);
         if (kind == WorkspaceKind.Teach)
         {
             DisposeProjectPanel(ref _cvPanel);
             _teachPanel ??= CreateTeachPanel();
-            _teachPanel.Dock = DockStyle.Fill;
-            _projectHost.Controls.Add(_teachPanel);
+            AttachProjectPage("Teach Points", _teachPanel);
             return;
         }
 
         DisposeProjectPanel(ref _cvPanel);
         DisposeProjectPanel(ref _teachPanel);
+        AttachProjectPage(null, null);
+    }
+
+    private void SetFrameHostVisible(bool visible)
+    {
+        if (!visible)
+        {
+            _cvPanel?.RestoreFrame();
+            _frameHost.Controls.Clear();
+        }
+
+        _frameHost.Visible = visible;
+        _rightLayout.RowStyles[0] = visible
+            ? new RowStyle(SizeType.AutoSize)
+            : new RowStyle(SizeType.Absolute, 0F);
+    }
+
+    private void AttachProjectPage(string? title, Control? panel)
+    {
+        if (_projectPage != null
+            && title != null
+            && panel != null
+            && _projectPage.Text == title
+            && _projectPage.Controls.Count == 1
+            && _projectPage.Controls[0] == panel)
+        {
+            return;
+        }
+
+        if (_projectPage != null)
+        {
+            _projectPage.Controls.Clear();
+            _commonTabs.TabPages.Remove(_projectPage);
+            _projectPage.Dispose();
+            _projectPage = null;
+        }
+
+        if (title == null || panel == null)
+        {
+            return;
+        }
+
+        panel.Dock = DockStyle.Fill;
+        _projectPage = new TabPage(title)
+        {
+            Padding = new Padding(4),
+            UseVisualStyleBackColor = true
+        };
+        _projectPage.Controls.Add(panel);
+        _commonTabs.TabPages.Add(_projectPage);
+        _commonTabs.SelectedTab = _projectPage;
     }
 
     private CvProjectPanel CreateCvPanel()
@@ -1268,6 +1367,44 @@ public partial class MainForm : Form
 
         AttachSession(WorkspaceKind.Teach);
         _canvas.AddReferencePoints(dialog.Points);
+    }
+
+    private void OfferStartup()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        using var dialog = new StartupDialog();
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            if (!IsDisposed)
+            {
+                Close();
+            }
+
+            return;
+        }
+
+        ApplyProjectStart(new ProjectStart(dialog.Action, dialog.FilePath));
+        ShowPluginNotes();
+    }
+
+    private void ShowPluginNotes()
+    {
+        if (_pluginsShown || _pluginNotes is not { Count: > 0 })
+        {
+            return;
+        }
+
+        _pluginsShown = true;
+        MessageBox.Show(
+            this,
+            string.Join(Environment.NewLine, _pluginNotes),
+            "Plugins",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private void NewProject(object? sender, EventArgs e)

@@ -439,6 +439,7 @@ public sealed class PathCanvas : Control
             Document.Tiles.Clear();
             Document.Tiles.AddRange(document.Tiles.Select(DocumentClone.CloneTile));
             Document.ImagePath = document.ImagePath;
+            Document.Exporters.Extra = ExporterSettings.CloneExtra(document.Exporters.Extra);
 
             TileDocumentHelper.EnsureLegacyMigrated(Document);
             RebuildMosaic();

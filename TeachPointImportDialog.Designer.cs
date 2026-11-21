@@ -41,7 +41,7 @@ partial class TeachPointImportDialog
         _unit.DropDownStyle = ComboBoxStyle.DropDownList;
         _unit.Name = "unitCombo";
         _unit.Width = 120;
-        _unit.Items.AddRange(new object[] { "?m", "mm", "cm", "m" });
+        _unit.Items.AddRange(new object[] { "µm", "mm", "cm", "m" });
         _unit.SelectedIndex = 1;
 
         _name.Name = "nameBox";

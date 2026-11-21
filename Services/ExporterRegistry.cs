@@ -1,34 +1,36 @@
-using DispensePathAuthor.Models;
+using DispensePathAuthor.Contracts;
 
 namespace DispensePathAuthor.Services;
 
-public sealed class ProgramExportRequest
-{
-    public required PathDocument Document { get; init; }
-
-    public required RobotCalibrationFile? Calibration { get; init; }
-
-    public required string DestinationPath { get; init; }
-}
-
-public interface IProgramExporter
-{
-    string Id { get; }
-
-    string MenuLabel { get; }
-
-    string FileFilter { get; }
-
-    string DefaultFileName { get; }
-
-    string? Validate(PathDocument document, RobotCalibrationFile? calibration);
-
-    void Export(ProgramExportRequest request);
-}
-
 public static class ExporterRegistry
 {
-    private static readonly IProgramExporter[] Registered = [new FanucLsExporter()];
+    private static readonly List<IProgramExporter> Registered = [new FanucLsExporter()];
+    private static bool _pluginsLoaded;
 
     public static IReadOnlyList<IProgramExporter> Exporters => Registered;
+
+    public static IReadOnlyList<string> LoadPlugins()
+    {
+        if (_pluginsLoaded)
+        {
+            return [];
+        }
+
+        _pluginsLoaded = true;
+        string folder = Path.Combine(AppContext.BaseDirectory, "plugins");
+        return PluginLoader.Load(folder, new Catalog(Registered));
+    }
+
+    private sealed class Catalog(List<IProgramExporter> exporters) : IExporterCatalog
+    {
+        public void Add(IProgramExporter exporter)
+        {
+            if (exporters.Any(existing => existing.Id == exporter.Id))
+            {
+                return;
+            }
+
+            exporters.Add(exporter);
+        }
+    }
 }

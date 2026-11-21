@@ -29,6 +29,23 @@ public partial class TeachProjectPanel : UserControl
         _pointList.MouseUp += OnPointListMouseUp;
     }
 
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        int textWidth = Math.Max(140, ClientSize.Width - Padding.Horizontal - 36);
+        var limit = new Size(textWidth, 0);
+        if (_hint.MaximumSize != limit)
+        {
+            _hint.MaximumSize = limit;
+        }
+
+        if (_originLabel.MaximumSize != limit)
+        {
+            _originLabel.MaximumSize = limit;
+        }
+
+        base.OnLayout(e);
+    }
+
     public event EventHandler? ImportRequested;
 
     public event EventHandler? RemoveRequested;

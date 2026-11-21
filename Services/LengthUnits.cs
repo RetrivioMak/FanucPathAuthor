@@ -16,7 +16,7 @@ public static class LengthUnits
     public static string Label(LengthUnit unit) =>
         unit switch
         {
-            LengthUnit.Micrometer => "?m",
+            LengthUnit.Micrometer => "µm",
             LengthUnit.Centimeter => "cm",
             LengthUnit.Meter => "m",
             _ => "mm"

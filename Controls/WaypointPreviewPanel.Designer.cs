@@ -28,7 +28,7 @@ partial class WaypointPreviewPanel
         _summaryLabel.Dock = DockStyle.Top;
         _summaryLabel.ForeColor = Color.DimGray;
         _summaryLabel.Name = "summaryLabel";
-        _summaryLabel.Text = "Export preview: ¡ª";
+        _summaryLabel.Text = "Export preview: â€”";
 
         _header.AutoSize = true;
         _header.AutoSizeMode = AutoSizeMode.GrowAndShrink;

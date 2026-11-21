@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DispensePathAuthor.Models;
@@ -42,9 +43,30 @@ public sealed class ExporterSettings
     [JsonPropertyName("fanuc-ls")]
     public FanucLsSettings FanucLs { get; set; } = new();
 
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; set; }
+
+    public JsonElement Section(string id) =>
+        Extra != null && Extra.TryGetValue(id, out JsonElement section) ? section.Clone() : default;
+
+    public void SetSection(string id, JsonElement section)
+    {
+        if (id == "fanuc-ls")
+        {
+            return;
+        }
+
+        Extra ??= new Dictionary<string, JsonElement>();
+        Extra[id] = section.Clone();
+    }
+
     public ExporterSettings Clone() =>
         new()
         {
-            FanucLs = FanucLs.Clone()
+            FanucLs = FanucLs.Clone(),
+            Extra = CloneExtra(Extra)
         };
+
+    public static Dictionary<string, JsonElement>? CloneExtra(Dictionary<string, JsonElement>? extra) =>
+        extra?.ToDictionary(pair => pair.Key, pair => pair.Value.Clone());
 }
