@@ -11,8 +11,14 @@ public static class TeachPointer
         IReadOnlyList<(double X, double Y)> points,
         TeachGridSettings grid,
         Func<double, double, PointF> toScreen,
-        double pickRadiusScreenPx)
+        double pickRadiusScreenPx,
+        bool snapEnabled)
     {
+        if (!snapEnabled)
+        {
+            return (x, y, false);
+        }
+
         if (SnapPointHelper.TryFindNearestScreen(
                 points.Select(static point => (point.X, point.Y)).ToList(),
                 x,

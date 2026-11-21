@@ -64,6 +64,18 @@ public sealed class ProjectSession
     {
         document.Workspace = kind;
         document.SchemaVersion = Math.Max(document.SchemaVersion, FrameMillimeters.SchemaVersion);
+        StrokeWidths.EnsureStored(document.Defaults);
+        if (document.Grid.Step_mm <= 0)
+        {
+            document.Grid.Step_mm = 0.2;
+        }
+
+        if (document.Grid.Steps_mm.Count == 0)
+        {
+            document.Grid.Steps_mm.AddRange(TeachGridSettings.DefaultStepsMm);
+        }
+
+        document.Grid.Enabled = true;
         if (kind != WorkspaceKind.Teach)
         {
             return;
@@ -71,11 +83,5 @@ public sealed class ProjectSession
 
         document.Frame = new FrameDefinition();
         document.FrameIsDefined = true;
-        if (document.Grid.Step_mm <= 0)
-        {
-            document.Grid.Step_mm = 0.2;
-        }
-
-        document.Grid.Enabled = true;
     }
 }

@@ -19,11 +19,18 @@ public partial class MainForm : Form
     private bool _offerStartup;
     private bool _startupOffered;
     private bool _pluginsShown;
+    private bool _suppressCloseConfirm;
     private ProjectSession? _session;
     private RobotCalibrationFile? _draftCalibration;
     private string? _draftCalibrationPath;
     private string? _draftFilePath;
     private string? _packageCacheDirectory;
+    private List<double> _gridSteps = new();
+    private bool _updatingGrid;
+    private double _toolWidthMm = ProcessDefaults.DefaultMinWidthMm;
+    private bool _updatingWidth;
+    private readonly ToolStripMenuItem _projectSettingsMenuItem = new("Project settings...");
+    private readonly ToolStripMenuItem _widthMenuItem = new("Width");
 
     private RobotCalibrationFile? _calibration
     {
@@ -123,9 +130,26 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (ShouldConfirmClose(e) &&
+            MessageBox.Show(
+                this,
+                "Close the program?",
+                "Confirm",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            e.Cancel = true;
+            return;
+        }
+
         ExportSettingsPersistence.Save(_canvas.Document.Exporters.FanucLs);
         base.OnFormClosing(e);
     }
+
+    private bool ShouldConfirmClose(FormClosingEventArgs e) =>
+        !_suppressCloseConfirm &&
+        e.CloseReason == CloseReason.UserClosing &&
+        !DesignMode;
 
     private void WireEvents()
     {
@@ -134,6 +158,9 @@ public partial class MainForm : Form
         _savePathMenuItem.Click += SavePath;
         _savePathAsMenuItem.Click += SavePathAs;
         _loadCalibrationMenuItem.Click += LoadCalibration;
+        _projectSettingsMenuItem.Click += OpenProjectSettings;
+        int calibrationIndex = _fileMenu.DropDownItems.IndexOf(_loadCalibrationMenuItem);
+        _fileMenu.DropDownItems.Insert(calibrationIndex + 1, _projectSettingsMenuItem);
         _exportSettingsMenuItem.Click += OpenExportSettings;
         _exportCsvMenuItem.Click += ExportCsv;
         BuildExporterMenu();
@@ -143,6 +170,8 @@ public partial class MainForm : Form
         _cancelShapeMenuItem.Click += CancelPending;
         _deleteSegmentMenuItem.Click += DeleteSelectedSegment;
         _clearSegmentsMenuItem.Click += ClearSegments;
+        int clearIndex = _editMenu.DropDownItems.IndexOf(_clearSegmentsMenuItem);
+        _editMenu.DropDownItems.Insert(clearIndex + 1, _widthMenuItem);
         _fitViewMenuItem.Click += FitImage;
         _refreshPreviewMenuItem.Click += RefreshWaypointPreview;
         _simulatePlayMenuItem.Click += SimulationPlay;
@@ -176,6 +205,51 @@ public partial class MainForm : Form
             _canvas.SnapToPointEnabled = enabled;
             _canvas.Invalidate();
         };
+        _toolPalette.ShowGridChanged += (_, show) =>
+        {
+            if (_updatingGrid)
+            {
+                return;
+            }
+
+            _canvas.SetGridEnabled(show);
+            _showGridMenuItem.Checked = _canvas.Document.Grid.Enabled;
+            if (_showGridMenuItem.Checked != show)
+            {
+                _toolPalette.SetShowGrid(_showGridMenuItem.Checked);
+            }
+        };
+        _toolPalette.GridStepChanged += (_, step) =>
+        {
+            if (_updatingGrid)
+            {
+                return;
+            }
+
+            ApplyGridStep(step);
+            BeginInvoke(SyncGridUi);
+        };
+        _toolPalette.WidthChanged += (_, width) =>
+        {
+            if (_updatingWidth)
+            {
+                return;
+            }
+
+            _toolWidthMm = width;
+            _canvas.SetToolWidth(width);
+            BeginInvoke(SyncWidthUi);
+        };
+        _showGridMenuItem.Click += (_, _) =>
+        {
+            if (_updatingGrid)
+            {
+                return;
+            }
+
+            _canvas.SetGridEnabled(_showGridMenuItem.Checked);
+            SyncGridUi();
+        };
         _toolPalette.FitRequested += (_, _) => FitImage();
         _toolPalette.SimulationPlayRequested += (_, _) => OnSimulationPlay();
         _toolPalette.SimulationPauseRequested += (_, _) =>
@@ -195,6 +269,8 @@ public partial class MainForm : Form
         };
         _segmentListPanel.MoveUpRequested += (_, _) => MoveSelectedSegment(-1);
         _segmentListPanel.MoveDownRequested += (_, _) => MoveSelectedSegment(1);
+        _segmentListPanel.PropertiesEdited += (_, edit) =>
+            _canvas.TrySetSegmentProperty(edit.Index, edit.Field, edit.Number, edit.Flag);
 
         _simulation.FrameAdvanced += (_, _) =>
         {
@@ -204,6 +280,10 @@ public partial class MainForm : Form
         _simulation.StateChanged += (_, _) => UpdateSimulationUi();
 
         KeyDown += OnFormKeyDown;
+        StrokeWidths.EnsureStored(_canvas.Document.Defaults);
+        ResetToolWidth();
+        SyncGridUi();
+        SyncWidthUi();
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
@@ -231,10 +311,17 @@ public partial class MainForm : Form
 
         if (e.KeyCode == Keys.Delete)
         {
+            if (_segmentListPanel.IsEditingProperties)
+            {
+                return;
+            }
+
             DeleteSelectedSegment();
         }
 
-        if (e.KeyCode == Keys.Space && ActiveControl is not NumericUpDown)
+        if (e.KeyCode == Keys.Space &&
+            ActiveControl is not NumericUpDown &&
+            !_segmentListPanel.IsEditingProperties)
         {
             if (_simulation.State == SimulationState.Stopped)
             {
@@ -503,6 +590,7 @@ public partial class MainForm : Form
         _currentPathFile = filePath;
         TryLoadCalibrationFromDocument(document);
         MigrateOpenPath(recordUndo: false);
+        ResetToolWidth();
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
@@ -831,6 +919,13 @@ public partial class MainForm : Form
                 },
                 _canvas.Document.Defaults.GlueOn,
                 _canvas.Document.Defaults.Speed_mm_s);
+            foreach (PathSegment segment in result.Segments)
+            {
+                if (segment.Kind != SegmentKind.Dot)
+                {
+                    segment.Width_mm = _toolWidthMm;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -844,9 +939,7 @@ public partial class MainForm : Form
             _canvas.FitToView();
         }
 
-        _statusLabel.Text = FrameMillimeters.StoresMillimeters(_canvas.Document) && _calibration?.PixelToRobot == null
-            ? $"Imported {result.Segments.Count} segments. Load calibration to place them on the image."
-            : $"Imported {result.Segments.Count} segments.";
+        _statusLabel.Text = $"Imported {result.Segments.Count} segments.";
         if (result.Warnings.Count > 0)
         {
             MessageBox.Show(
@@ -988,7 +1081,186 @@ public partial class MainForm : Form
         _canvas.TryMoveSegment(index, delta);
     }
 
-    private void SyncUiFromDocument() => _cvPanel?.ShowFrame(_canvas.Document.Frame);
+    private void SyncUiFromDocument()
+    {
+        _cvPanel?.ShowFrame(_canvas.Document.Frame);
+        SyncGridUi();
+        SyncWidthUi();
+    }
+
+    private void ApplyGridStep(double step)
+    {
+        if (step <= 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<double> steps = _gridSteps.Count > 0 ? _gridSteps : _canvas.Document.Grid.Steps_mm;
+        _canvas.SetGridStep(step, steps);
+    }
+
+    private void SyncGridUi()
+    {
+        TeachGridSettings grid = _canvas.Document.Grid;
+        _gridSteps = GridSteps.NormalizeList(grid.Steps_mm, grid.Step_mm, out double selected);
+        _updatingGrid = true;
+        try
+        {
+            _toolPalette.BindGrid(grid.Enabled, _gridSteps, selected);
+            _showGridMenuItem.Checked = grid.Enabled;
+            RebuildGridSizeMenu(selected);
+        }
+        finally
+        {
+            _updatingGrid = false;
+        }
+    }
+
+    private void RebuildGridSizeMenu(double selected)
+    {
+        var items = new List<ToolStripItem>();
+        foreach (double step in _gridSteps)
+        {
+            double chosen = step;
+            var item = new ToolStripMenuItem(GridSteps.Format(step))
+            {
+                Checked = GridSteps.NearlyEqual(step, selected)
+            };
+            item.Click += (_, _) =>
+            {
+                if (_updatingGrid)
+                {
+                    return;
+                }
+
+                ApplyGridStep(chosen);
+                BeginInvoke(SyncGridUi);
+            };
+            items.Add(item);
+        }
+
+        items.Add(new ToolStripSeparator());
+        var customize = new ToolStripMenuItem("Customize...");
+        customize.Click += (_, _) => BeginInvoke(CustomizeGridSteps);
+        items.Add(customize);
+
+        ToolStripItem[] previous = _gridSizeMenuItem.DropDownItems.Cast<ToolStripItem>().ToArray();
+        _gridSizeMenuItem.DropDownItems.Clear();
+        _gridSizeMenuItem.DropDownItems.AddRange(items.ToArray());
+        foreach (ToolStripItem item in previous)
+        {
+            item.Dispose();
+        }
+    }
+
+    private void CustomizeGridSteps()
+    {
+        TeachGridSettings grid = _canvas.Document.Grid;
+        using var dialog = new GridStepsDialog(grid.Steps_mm, grid.Step_mm);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _canvas.SetGridStep(dialog.SelectedStep, dialog.Steps);
+        SyncGridUi();
+    }
+
+    private void ResetToolWidth()
+    {
+        _toolWidthMm = StrokeWidths.Floor(_canvas.Document.Defaults.MinWidth_mm);
+        _canvas.SetToolWidth(_toolWidthMm);
+    }
+
+    private void SyncWidthUi()
+    {
+        ProcessDefaults defaults = _canvas.Document.Defaults;
+        double minimum = StrokeWidths.Floor(defaults.MinWidth_mm);
+        if (_toolWidthMm < minimum - 0.0005)
+        {
+            _toolWidthMm = minimum;
+            _canvas.SetToolWidth(_toolWidthMm);
+        }
+
+        List<double> shown = StrokeWidths.DisplayList(defaults.Widths_mm, _toolWidthMm, minimum, out double selected);
+        _toolWidthMm = selected;
+        _canvas.SetToolWidth(selected);
+        _updatingWidth = true;
+        try
+        {
+            _toolPalette.BindWidths(shown, selected);
+            RebuildWidthMenu(shown, selected);
+        }
+        finally
+        {
+            _updatingWidth = false;
+        }
+    }
+
+    private void RebuildWidthMenu(IReadOnlyList<double> widths, double selected)
+    {
+        var items = new List<ToolStripItem>();
+        foreach (double width in widths)
+        {
+            double chosen = width;
+            var item = new ToolStripMenuItem(StrokeWidths.Format(width))
+            {
+                Checked = StrokeWidths.NearlyEqual(width, selected)
+            };
+            item.Click += (_, _) =>
+            {
+                if (_updatingWidth)
+                {
+                    return;
+                }
+
+                _toolWidthMm = chosen;
+                _canvas.SetToolWidth(chosen);
+                BeginInvoke(SyncWidthUi);
+            };
+            items.Add(item);
+        }
+
+        items.Add(new ToolStripSeparator());
+        var customize = new ToolStripMenuItem("Customize...");
+        customize.Click += (_, _) => BeginInvoke(CustomizeWidths);
+        items.Add(customize);
+
+        ToolStripItem[] previous = _widthMenuItem.DropDownItems.Cast<ToolStripItem>().ToArray();
+        _widthMenuItem.DropDownItems.Clear();
+        _widthMenuItem.DropDownItems.AddRange(items.ToArray());
+        foreach (ToolStripItem item in previous)
+        {
+            item.Dispose();
+        }
+    }
+
+    private void CustomizeWidths()
+    {
+        ProcessDefaults defaults = _canvas.Document.Defaults;
+        using var dialog = new StrokeWidthsDialog(defaults.Widths_mm, defaults.MinWidth_mm);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _canvas.SetWidthSteps(dialog.Steps);
+        SyncWidthUi();
+    }
+
+    private void OpenProjectSettings(object? sender, EventArgs e)
+    {
+        using var dialog = new ProjectSettingsDialog(
+            _canvas.Document.Defaults,
+            _canvas.Document.Workspace != WorkspaceKind.Teach);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _canvas.ApplyProcessSettings(dialog.Settings);
+        _statusLabel.Text = "Project settings updated";
+    }
 
     private void BeginFrameEdit()
     {
@@ -1183,21 +1455,23 @@ public partial class MainForm : Form
         _canvas.UseSpace(kind == WorkspaceKind.Teach
             ? new TeachCanvasSpace()
             : new CvCanvasSpace());
+        SetFrameHostVisible(false);
         if (kind == WorkspaceKind.Cv)
         {
             DisposeProjectPanel(ref _teachPanel);
             _cvPanel ??= CreateCvPanel();
             _cvPanel.MountFrame(_frameHost);
             SetFrameHostVisible(true);
+            _toolPalette.SetSnapEnabled(false);
             AttachProjectPage("FOV Tiles", _cvPanel);
             return;
         }
 
-        SetFrameHostVisible(false);
         if (kind == WorkspaceKind.Teach)
         {
             DisposeProjectPanel(ref _cvPanel);
             _teachPanel ??= CreateTeachPanel();
+            _toolPalette.SetSnapEnabled(true);
             AttachProjectPage("Teach Points", _teachPanel);
             return;
         }
@@ -1298,8 +1572,6 @@ public partial class MainForm : Form
                 _canvas.AlignGridTo(point.X_mm, point.Y_mm);
             }
         };
-        panel.GridEnabledChanged += (_, _) => _canvas.SetGridEnabled(panel.GridEnabled);
-        panel.GridStepChanged += (_, _) => _canvas.SetGridStep(panel.GridStepMillimeters);
         return panel;
     }
 
@@ -1381,6 +1653,7 @@ public partial class MainForm : Form
         {
             if (!IsDisposed)
             {
+                _suppressCloseConfirm = true;
                 Close();
             }
 
@@ -1446,6 +1719,7 @@ public partial class MainForm : Form
         _packageCacheDirectory = null;
         _canvas.ResetProject();
         AttachSession(kind);
+        ResetToolWidth();
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();

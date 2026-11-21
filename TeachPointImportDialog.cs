@@ -19,10 +19,45 @@ public partial class TeachPointImportDialog : Form
         _existingNames = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
         _usedNames = new HashSet<string>(_existingNames, StringComparer.OrdinalIgnoreCase);
         InitializeComponent();
+        EnsurePreviewColumns();
+        _unit.SelectedIndex = 1;
         _csvButton.Click += (_, _) => LoadCsv();
         _addButton.Click += (_, _) => AddManual();
         _importButton.Click += (_, _) => Accept();
         _removeButton.Click += (_, _) => RemoveSelected();
+        _name.KeyDown += AddOnEnter;
+        _x.KeyDown += AddOnEnter;
+        _y.KeyDown += AddOnEnter;
+    }
+
+    private void EnsurePreviewColumns()
+    {
+        if (_preview.Columns.Count > 0)
+        {
+            return;
+        }
+
+        _preview.View = View.Details;
+        _preview.FullRowSelect = true;
+        _preview.GridLines = true;
+        _preview.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+        _preview.HideSelection = false;
+        _preview.Columns.Add("Name", 220);
+        _preview.Columns.Add("X", 140);
+        _preview.Columns.Add("Y", 140);
+        _preview.Columns.Add("Unit", 80);
+    }
+
+    private void AddOnEnter(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        AddManual();
     }
 
     private LengthUnit SelectedUnit => _unit.SelectedIndex switch
@@ -85,6 +120,8 @@ public partial class TeachPointImportDialog : Form
         item.SubItems.Add(LengthUnits.Label(unit));
         item.Tag = _pending.Count - 1;
         _preview.Items.Add(item);
+        item.Selected = true;
+        item.EnsureVisible();
     }
 
     private void RemoveSelected()

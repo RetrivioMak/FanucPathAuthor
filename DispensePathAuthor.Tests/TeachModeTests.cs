@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Text.Json;
+using DispensePathAuthor.Controls;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 using Xunit;
@@ -49,6 +50,7 @@ public class TeachModeTests : IDisposable
         document.Grid.OriginY_mm = 4;
         document.Grid.IsAligned = true;
         document.Grid.Step_mm = 0.2;
+        document.Grid.Steps_mm = new List<double> { 0.2, 1, 2.5 };
         string path = Path.Combine(_directory, "teach.json");
         PathSerializer.Save(document, path);
 
@@ -59,6 +61,7 @@ public class TeachModeTests : IDisposable
         Assert.Equal(12.5, loaded.ReferencePoints[0].X_mm, 3);
         Assert.True(loaded.Grid.IsAligned);
         Assert.Equal(0.2, loaded.Grid.Step_mm, 3);
+        Assert.Equal(new[] { 0.2, 1, 2.5 }, loaded.Grid.Steps_mm);
     }
 
     [Fact]
@@ -102,6 +105,31 @@ public class TeachModeTests : IDisposable
     }
 
     [Fact]
+    public void Grid_IsAvailableForCvAndTeach()
+    {
+        Assert.True(new CvCanvasSpace().HasGrid);
+        Assert.True(new TeachCanvasSpace().HasGrid);
+
+        var document = new PathDocument();
+        ProjectSession.Start(document, WorkspaceKind.Cv);
+
+        Assert.True(document.Grid.Enabled);
+        Assert.Equal(0.2, document.Grid.Step_mm, 3);
+        Assert.NotEmpty(document.Grid.Steps_mm);
+    }
+
+    [Fact]
+    public void GridSteps_NormalizesSortsAndKeepsSelection()
+    {
+        List<double> steps = GridSteps.NormalizeList(new[] { 2.0, 0.2, 0.2, 0.0001, 5000 }, 0.35, out double current);
+
+        Assert.Equal(new[] { 0.2, 0.35, 2 }, steps);
+        Assert.Equal(0.35, current, 3);
+        Assert.True(GridSteps.TryParse("0.35", out double parsed));
+        Assert.Equal(0.35, parsed, 3);
+    }
+
+    [Fact]
     public void GridSnap_UsesOriginAndStep()
     {
         var grid = new TeachGridSettings
@@ -120,6 +148,17 @@ public class TeachModeTests : IDisposable
     }
 
     [Fact]
+    public void GridSnap_WhenHidden_StillSnaps()
+    {
+        var grid = new TeachGridSettings { Enabled = false, Step_mm = 1, OriginX_mm = 0, OriginY_mm = 0 };
+
+        (double x, double y) = TeachGridSnap.Snap(1.6, -0.4, grid);
+
+        Assert.Equal(2, x, 6);
+        Assert.Equal(0, y, 6);
+    }
+
+    [Fact]
     public void Pointer_PrefersNearbyPointOverGrid()
     {
         var grid = new TeachGridSettings { Enabled = true, Step_mm = 1, OriginX_mm = 0, OriginY_mm = 0 };
@@ -129,7 +168,8 @@ public class TeachModeTests : IDisposable
             new[] { (0d, 0d) },
             grid,
             static (px, py) => new PointF((float)px, (float)py),
-            pickRadiusScreenPx: 1);
+            pickRadiusScreenPx: 1,
+            snapEnabled: true);
 
         Assert.True(snappedToPoint);
         Assert.Equal(0, x, 6);
@@ -141,11 +181,31 @@ public class TeachModeTests : IDisposable
             new[] { (0d, 0d) },
             grid,
             static (px, py) => new PointF((float)px, (float)py),
-            pickRadiusScreenPx: 1);
+            pickRadiusScreenPx: 1,
+            snapEnabled: true);
 
         Assert.False(gridPoint);
         Assert.Equal(2, gridX, 6);
         Assert.Equal(0, gridY, 6);
+    }
+
+    [Fact]
+    public void Pointer_SnapOff_KeepsCursor()
+    {
+        var grid = new TeachGridSettings { Enabled = true, Step_mm = 1, OriginX_mm = 0, OriginY_mm = 0 };
+
+        (double x, double y, bool snappedToPoint) = TeachPointer.Resolve(
+            1.4,
+            0.2,
+            new[] { (0d, 0d) },
+            grid,
+            static (px, py) => new PointF((float)px, (float)py),
+            pickRadiusScreenPx: 8,
+            snapEnabled: false);
+
+        Assert.False(snappedToPoint);
+        Assert.Equal(1.4, x, 6);
+        Assert.Equal(0.2, y, 6);
     }
 
     [Fact]

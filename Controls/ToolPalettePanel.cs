@@ -1,3 +1,6 @@
+using DispensePathAuthor.Models;
+using DispensePathAuthor.Services;
+
 namespace DispensePathAuthor.Controls;
 
 public sealed class ToolPalettePanel : Panel
@@ -13,6 +16,27 @@ public sealed class ToolPalettePanel : Panel
     private readonly ToolPaletteButton _rect = CreateToggle("Rect", ToolIconFactory.Rect, DrawTool.Rectangle);
     private readonly ToolPaletteButton _circle = CreateToggle("Circ", ToolIconFactory.Circle, DrawTool.Circle);
     private readonly ToolPaletteButton _snap = CreateIndependentToggle("Snp", ToolIconFactory.Snap);
+    private readonly ToolPaletteButton _showGrid = CreateIconIndependentToggle(ToolIconFactory.Grid);
+    private readonly ToolTip _tips = new()
+    {
+        InitialDelay = 400,
+        ReshowDelay = 200,
+        ShowAlways = true
+    };
+    private readonly ComboBox _gridStep = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        IntegralHeight = false,
+        MaxDropDownItems = 12,
+        Width = 96
+    };
+    private readonly ComboBox _width = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        IntegralHeight = false,
+        MaxDropDownItems = 12,
+        Width = 96
+    };
     private readonly ToolPaletteButton _fit = CreateAction("Fit", ToolIconFactory.Fit);
     private readonly ToolPaletteButton _simPlay = CreateIconAction(ToolIconFactory.SimPlay);
     private readonly ToolPaletteButton _simPause = CreateIconAction(ToolIconFactory.SimPause);
@@ -35,8 +59,14 @@ public sealed class ToolPalettePanel : Panel
         ForeColor = Color.DimGray
     };
 
+    private bool _gridUpdating;
+    private bool _widthUpdating;
+
     public event EventHandler<DrawTool>? ToolSelected;
     public event EventHandler<bool>? SnapToPointChanged;
+    public event EventHandler<bool>? ShowGridChanged;
+    public event EventHandler<double>? GridStepChanged;
+    public event EventHandler<double>? WidthChanged;
     public event EventHandler? FitRequested;
     public event EventHandler? SimulationPlayRequested;
     public event EventHandler? SimulationPauseRequested;
@@ -63,7 +93,8 @@ public sealed class ToolPalettePanel : Panel
 
         root.Controls.Add(CreateGroup("Pointer", _select, _move));
         root.Controls.Add(CreateGroup("Frame", _frame));
-        root.Controls.Add(CreateGroup("Draw", _dot, _line, _arc, _rect, _circle, _snap));
+        root.Controls.Add(CreateGroup("Draw", _dot, _line, _arc, _rect, _circle, _snap, CreateWidthHost()));
+        root.Controls.Add(CreateGridGroup());
         root.Controls.Add(CreateGroup("View", _fit));
         root.Controls.Add(CreateSimulationGroup());
 
@@ -78,7 +109,33 @@ public sealed class ToolPalettePanel : Panel
         _rect.Click += (_, _) => SelectTool(DrawTool.Rectangle);
         _circle.Click += (_, _) => SelectTool(DrawTool.Circle);
         _snap.Click += (_, _) => SnapToPointChanged?.Invoke(this, _snap.IsChecked);
+        _showGrid.Click += (_, _) =>
+        {
+            if (!_gridUpdating)
+            {
+                ShowGridChanged?.Invoke(this, _showGrid.IsChecked);
+            }
+        };
+        _gridStep.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_gridUpdating &&
+                _gridStep.SelectedItem is string text &&
+                GridSteps.TryParse(text, out double step))
+            {
+                GridStepChanged?.Invoke(this, step);
+            }
+        };
+        _width.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_widthUpdating &&
+                _width.SelectedItem is string text &&
+                StrokeWidths.TryParse(text, StrokeWidths.MinMm, out double width))
+            {
+                WidthChanged?.Invoke(this, width);
+            }
+        };
         _fit.Click += (_, _) => FitRequested?.Invoke(this, EventArgs.Empty);
+        BindGrid(true, TeachGridSettings.DefaultStepsMm, 0.2);
 
         _simPlay.Click += (_, _) => SimulationPlayRequested?.Invoke(this, EventArgs.Empty);
         _simPause.Click += (_, _) => SimulationPauseRequested?.Invoke(this, EventArgs.Empty);
@@ -89,6 +146,107 @@ public sealed class ToolPalettePanel : Panel
             _simSpeedCaption.Text = $"Speed {multiplier:0.#}x";
             SimulationSpeedMultiplierChanged?.Invoke(this, multiplier);
         };
+        SetToolTips();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _tips.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void SetToolTips()
+    {
+        _tips.SetToolTip(_select, "Select. Pick a point or a shape.");
+        _tips.SetToolTip(_move, "Move. Drag a point of a segment.");
+        _tips.SetToolTip(_frame, "Frame. Set the frame origin on the canvas.");
+        _tips.SetToolTip(_dot, "Dot. Place a single point.");
+        _tips.SetToolTip(_line, "Line. Draw a straight segment from two points.");
+        _tips.SetToolTip(_arc, "Arc. Draw an arc through three points.");
+        _tips.SetToolTip(_rect, "Rectangle. Draw a rectangle from two opposite corners.");
+        _tips.SetToolTip(_circle, "Circle. Draw a circle from the center and a radius point.");
+        _tips.SetToolTip(_snap, "Snap. Snap the cursor to points and grid intersections.");
+        _tips.SetToolTip(_width, "Width, mm. Stroke used for the next line or arc.");
+        _tips.SetToolTip(_showGrid, "Grid. Show or hide the grid.");
+        _tips.SetToolTip(_gridStep, "Grid step, mm. Choose the distance between grid points.");
+        _tips.SetToolTip(_fit, "Fit. Fit the whole path in the view.");
+        _tips.SetToolTip(_simPlay, "Play. Run the dispense simulation.");
+        _tips.SetToolTip(_simPause, "Pause. Pause the dispense simulation.");
+        _tips.SetToolTip(_simStop, "Stop. Stop the dispense simulation.");
+        _tips.SetToolTip(_simSpeed, "Speed. Simulation playback speed.");
+    }
+
+    public void BindGrid(bool show, IReadOnlyList<double> steps, double selected)
+    {
+        _gridUpdating = true;
+        try
+        {
+            _showGrid.IsChecked = show;
+            List<double> values = GridSteps.NormalizeList(steps, selected, out double current);
+            _gridStep.Items.Clear();
+            foreach (double value in values)
+            {
+                _gridStep.Items.Add(GridSteps.Format(value));
+            }
+
+            _gridStep.SelectedItem = GridSteps.Format(current);
+        }
+        finally
+        {
+            _gridUpdating = false;
+        }
+    }
+
+    public void BindWidths(IReadOnlyList<double> steps, double selected)
+    {
+        _widthUpdating = true;
+        try
+        {
+            _width.Items.Clear();
+            foreach (double value in steps)
+            {
+                _width.Items.Add(StrokeWidths.Format(value));
+            }
+
+            _width.SelectedItem = StrokeWidths.Format(selected);
+        }
+        finally
+        {
+            _widthUpdating = false;
+        }
+    }
+
+    public void SetShowGrid(bool show)
+    {
+        if (_showGrid.IsChecked == show)
+        {
+            return;
+        }
+
+        _gridUpdating = true;
+        try
+        {
+            _showGrid.IsChecked = show;
+        }
+        finally
+        {
+            _gridUpdating = false;
+        }
+    }
+
+    public void SetSnapEnabled(bool enabled)
+    {
+        if (_snap.IsChecked == enabled)
+        {
+            return;
+        }
+
+        _snap.IsChecked = enabled;
+        SnapToPointChanged?.Invoke(this, enabled);
     }
 
     public void SetActiveTool(DrawTool tool)
@@ -108,6 +266,54 @@ public sealed class ToolPalettePanel : Panel
         _simPlay.Enabled = state.CanPlay;
         _simPause.Enabled = state.CanPause;
         _simStop.Enabled = state.CanStop;
+    }
+
+    private GroupBox CreateGridGroup()
+    {
+        var stepHost = new Panel
+        {
+            Width = 108,
+            Height = PaletteItemHeight,
+            MinimumSize = new Size(108, PaletteItemHeight),
+            MaximumSize = new Size(108, PaletteItemHeight),
+            Margin = new Padding(4, 2, 4, 2)
+        };
+        var caption = new Label
+        {
+            AutoSize = true,
+            Text = "Step mm",
+            Font = new Font("Segoe UI", 8f),
+            ForeColor = Color.DimGray,
+            Location = new Point(4, 10)
+        };
+        _gridStep.Location = new Point(4, 34);
+        stepHost.Controls.Add(caption);
+        stepHost.Controls.Add(_gridStep);
+        return CreateGroup("Grid", _showGrid, stepHost);
+    }
+
+    private Control CreateWidthHost()
+    {
+        var host = new Panel
+        {
+            Width = 108,
+            Height = PaletteItemHeight,
+            MinimumSize = new Size(108, PaletteItemHeight),
+            MaximumSize = new Size(108, PaletteItemHeight),
+            Margin = new Padding(4, 2, 4, 2)
+        };
+        var caption = new Label
+        {
+            AutoSize = true,
+            Text = "Width mm",
+            Font = new Font("Segoe UI", 8f),
+            ForeColor = Color.DimGray,
+            Location = new Point(4, 10)
+        };
+        _width.Location = new Point(4, 34);
+        host.Controls.Add(caption);
+        host.Controls.Add(_width);
+        return host;
     }
 
     private GroupBox CreateSimulationGroup()
@@ -167,6 +373,17 @@ public sealed class ToolPalettePanel : Panel
     private static ToolPaletteButton CreateIconAction(Image icon)
     {
         var button = new ToolPaletteButton { Image = icon };
+        button.ConfigureIconOnly();
+        return button;
+    }
+
+    private static ToolPaletteButton CreateIconIndependentToggle(Image icon)
+    {
+        var button = new ToolPaletteButton
+        {
+            Image = icon,
+            IndependentToggle = true
+        };
         button.ConfigureIconOnly();
         return button;
     }

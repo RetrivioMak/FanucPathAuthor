@@ -40,6 +40,8 @@ partial class MainForm
         _simulatePlayMenuItem = new ToolStripMenuItem();
         _simulatePauseMenuItem = new ToolStripMenuItem();
         _simulateStopMenuItem = new ToolStripMenuItem();
+        _showGridMenuItem = new ToolStripMenuItem();
+        _gridSizeMenuItem = new ToolStripMenuItem();
         _statusStrip = new StatusStrip();
         _statusLabel = new ToolStripStatusLabel();
         _cursorLabel = new ToolStripStatusLabel();
@@ -133,6 +135,12 @@ partial class MainForm
         _simulatePauseMenuItem.Text = "Simulate Pause";
         _simulateStopMenuItem.Name = "simulateStopMenuItem";
         _simulateStopMenuItem.Text = "Simulate Stop";
+        _showGridMenuItem.CheckOnClick = true;
+        _showGridMenuItem.Name = "showGridMenuItem";
+        _showGridMenuItem.Text = "Grid";
+        _showGridMenuItem.ToolTipText = "Show grid";
+        _gridSizeMenuItem.Name = "gridSizeMenuItem";
+        _gridSizeMenuItem.Text = "Grid Size";
         _viewMenu.DropDownItems.AddRange(new ToolStripItem[]
         {
             _fitViewMenuItem,
@@ -140,7 +148,10 @@ partial class MainForm
             new ToolStripSeparator(),
             _simulatePlayMenuItem,
             _simulatePauseMenuItem,
-            _simulateStopMenuItem
+            _simulateStopMenuItem,
+            new ToolStripSeparator(),
+            _showGridMenuItem,
+            _gridSizeMenuItem
         });
         _viewMenu.Name = "viewMenu";
         _viewMenu.Text = "View";
@@ -157,7 +168,7 @@ partial class MainForm
         _cursorLabel.TextAlign = ContentAlignment.MiddleLeft;
         _cursorLabel.Width = 420;
         _hintLabel.Name = "hintLabel";
-        _hintLabel.Text = "Ctrl+wheel: zoom | Ctrl+drag: pan | Esc: cancel";
+        _hintLabel.Text = "Wheel: zoom | Right-drag empty space: pan | Esc: cancel";
         _statusStrip.Items.AddRange(new ToolStripItem[] { _statusLabel, _cursorLabel, _hintLabel });
         _statusStrip.Dock = DockStyle.Bottom;
         _statusStrip.Name = "statusStrip";
@@ -266,6 +277,8 @@ partial class MainForm
     private ToolStripMenuItem _simulatePlayMenuItem = null!;
     private ToolStripMenuItem _simulatePauseMenuItem = null!;
     private ToolStripMenuItem _simulateStopMenuItem = null!;
+    private ToolStripMenuItem _showGridMenuItem = null!;
+    private ToolStripMenuItem _gridSizeMenuItem = null!;
     private StatusStrip _statusStrip = null!;
     private ToolStripStatusLabel _statusLabel = null!;
     private ToolStripStatusLabel _cursorLabel = null!;

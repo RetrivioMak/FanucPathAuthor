@@ -6,7 +6,7 @@ public static class TeachGridSnap
 {
     public static (double X, double Y) Snap(double x, double y, TeachGridSettings grid)
     {
-        if (!grid.Enabled || grid.Step_mm <= 0)
+        if (grid.Step_mm <= 0)
         {
             return (x, y);
         }

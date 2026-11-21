@@ -509,7 +509,10 @@ public partial class ExportSettingsDialog : Form
             P_deg = _sourceDefaults.P_deg,
             R_deg = _sourceDefaults.R_deg,
             Speed_mm_s = _sourceDefaults.Speed_mm_s,
-            GlueOn = _sourceDefaults.GlueOn
+            GlueOn = _sourceDefaults.GlueOn,
+            MinWidth_mm = _sourceDefaults.MinWidth_mm,
+            ReferenceMmPerPx = _sourceDefaults.ReferenceMmPerPx,
+            Widths_mm = new List<double>(_sourceDefaults.Widths_mm)
         };
         FanucResult = new FanucLsSettings
         {

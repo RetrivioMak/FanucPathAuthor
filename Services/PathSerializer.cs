@@ -40,6 +40,7 @@ public static class PathSerializer
         }
 
         PathDocumentMigration.Migrate(document);
+        StrokeWidths.AssignMissing(document);
         if (!workspaceSpecified)
         {
             document.Workspace = WorkspaceKind.Cv;

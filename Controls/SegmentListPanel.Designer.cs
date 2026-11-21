@@ -35,6 +35,7 @@ partial class SegmentListPanel
         _segmentList.FullRowSelect = true;
         _segmentList.HeaderStyle = ColumnHeaderStyle.Nonclickable;
         _segmentList.HideSelection = false;
+        _segmentList.MultiSelect = false;
         _segmentList.Name = "_segmentList";
         _segmentList.TabIndex = 0;
         _segmentList.UseCompatibleStateImageBehavior = false;

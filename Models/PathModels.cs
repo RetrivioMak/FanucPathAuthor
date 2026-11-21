@@ -1,5 +1,9 @@
 namespace DispensePathAuthor.Models;
 
+/// <summary>
+/// Fixed path-object type.
+/// Dot stores one point, Line stores start and end, Arc stores start, mid, and end.
+/// </summary>
 public enum SegmentKind
 {
     Dot,
@@ -65,12 +69,25 @@ public enum ExportLocalRotation
 
 public sealed class ProcessDefaults
 {
+    public const double DefaultMinWidthMm = 0.1;
+    public const double DefaultReferenceMmPerPx = 0.1;
+
+    public static readonly double[] DefaultWidthsMm = { 0.2, 0.3, 0.5, 0.8, 1, 1.5, 2, 3, 5 };
+
     public double Z_mm { get; set; } = 0;
     public double W_deg { get; set; } = 0;
     public double P_deg { get; set; } = 0;
     public double R_deg { get; set; } = 0;
     public double Speed_mm_s { get; set; } = 50;
     public bool GlueOn { get; set; } = true;
+
+    /// <summary>Smallest stroke offered for new lines and arcs.</summary>
+    public double MinWidth_mm { get; set; } = DefaultMinWidthMm;
+
+    /// <summary>CV image scale used until a calibration file is loaded. 0.1 means 1 px = 0.1 mm.</summary>
+    public double ReferenceMmPerPx { get; set; } = DefaultReferenceMmPerPx;
+
+    public List<double> Widths_mm { get; set; } = new(DefaultWidthsMm);
 }
 
 public sealed class PathSegment
@@ -78,6 +95,9 @@ public sealed class PathSegment
     public SegmentKind Kind { get; set; }
     public bool GlueOn { get; set; } = true;
     public double Speed_mm_s { get; set; } = 50;
+
+    /// <summary>Bead width in millimeters. Dots do not use it. Zero means the project minimum.</summary>
+    public double Width_mm { get; set; }
 
     // Teach, and CV from schema 6: millimeters along the project frame.
     // Older CV documents: frame-local pixels, migrated when calibration is known.
@@ -117,8 +137,12 @@ public sealed class ReferencePoint
 
 public sealed class TeachGridSettings
 {
+    public static readonly double[] DefaultStepsMm = { 0.1, 0.2, 0.5, 1, 2, 5, 10 };
+
+    /// <summary>Draw the grid. Snapping to points and grid intersections is separate.</summary>
     public bool Enabled { get; set; } = true;
     public double Step_mm { get; set; } = 0.2;
+    public List<double> Steps_mm { get; set; } = new(DefaultStepsMm);
     public double OriginX_mm { get; set; }
     public double OriginY_mm { get; set; }
     public bool IsAligned { get; set; }
@@ -128,6 +152,7 @@ public sealed class TeachGridSettings
         {
             Enabled = Enabled,
             Step_mm = Step_mm,
+            Steps_mm = new List<double>(Steps_mm),
             OriginX_mm = OriginX_mm,
             OriginY_mm = OriginY_mm,
             IsAligned = IsAligned

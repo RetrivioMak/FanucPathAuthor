@@ -34,12 +34,29 @@ public sealed class PathCanvas : Control
     private readonly List<(double X, double Y)> _pendingPoints = new();
     private readonly UndoRedoStack<PathDocument> _undoRedo = new(DocumentClone.Clone);
     private float _zoom = 1f;
+    private double _toolWidthMm = ProcessDefaults.DefaultMinWidthMm;
     private PointF _panOffset = PointF.Empty;
     private bool _isPanning;
     private Point _lastMouse;
     private (double X, double Y)? _cursorLocal;
     private (double SensorX, double SensorY)? _snapHover;
+    private MarkerPoint? _hoverPoint;
+    private int? _hoverShapeIndex;
+    private MarkerPoint? _selectedPoint;
     private bool _suppressUndo;
+    private readonly HScrollBar _horizontalScroll;
+    private readonly VScrollBar _verticalScroll;
+    private readonly Panel _scrollCorner;
+    private bool _adjustingScroll;
+
+    private readonly record struct MarkerPoint(
+        double OriginX,
+        double OriginY,
+        double SensorX,
+        double SensorY,
+        int? DotSegmentIndex,
+        string? ReferenceId,
+        bool IsFrameOrigin = false);
     private bool _isDraggingVertex;
     private VertexPick? _activeVertexPick;
 
@@ -62,6 +79,7 @@ public sealed class PathCanvas : Control
             }
 
             _activeTool = value;
+            ClearObjectHover();
         }
     }
     public bool SnapToPointEnabled { get; set; }
@@ -94,6 +112,14 @@ public sealed class PathCanvas : Control
         DoubleBuffered = true;
         BackColor = Color.FromArgb(40, 40, 40);
         TabStop = true;
+        _horizontalScroll = new HScrollBar { TabStop = false };
+        _verticalScroll = new VScrollBar { TabStop = false };
+        _scrollCorner = new Panel { BackColor = SystemColors.Control, TabStop = false };
+        _horizontalScroll.ValueChanged += (_, _) => OnScrollValueChanged();
+        _verticalScroll.ValueChanged += (_, _) => OnScrollValueChanged();
+        Controls.Add(_horizontalScroll);
+        Controls.Add(_verticalScroll);
+        Controls.Add(_scrollCorner);
     }
 
     public void LoadImage(string path)
@@ -190,12 +216,14 @@ public sealed class PathCanvas : Control
             placement.Image.Width,
             placement.Image.Height);
 
-        float scaleX = ClientSize.Width / tileBounds.Width;
-        float scaleY = ClientSize.Height / tileBounds.Height;
+        Size view = ViewSize;
+        float scaleX = view.Width / tileBounds.Width;
+        float scaleY = view.Height / tileBounds.Height;
         _zoom = Math.Min(scaleX, scaleY) * 0.9f;
         _panOffset = new PointF(
-            (ClientSize.Width - tileBounds.Width * _zoom) / 2f - tileBounds.Left * _zoom,
-            (ClientSize.Height - tileBounds.Height * _zoom) / 2f - tileBounds.Top * _zoom);
+            (view.Width - tileBounds.Width * _zoom) / 2f - tileBounds.Left * _zoom,
+            (view.Height - tileBounds.Height * _zoom) / 2f - tileBounds.Top * _zoom);
+        SyncScrollBars();
         Invalidate();
     }
 
@@ -227,8 +255,85 @@ public sealed class PathCanvas : Control
     private bool TryStoredScale(out FrameAxisScale scale)
     {
         scale = default;
-        return FrameMillimeters.StoresMillimeters(Document) &&
-               FrameMillimeters.TryGetScale(Document.Frame, _mosaicCalibration, out scale);
+        if (!FrameMillimeters.StoresMillimeters(Document))
+        {
+            return false;
+        }
+
+        scale = FrameMillimeters.ResolveImageScale(
+            Document.Frame,
+            _mosaicCalibration,
+            Document.Defaults.ReferenceMmPerPx);
+        return scale.IsDefined;
+    }
+
+    private double ActiveMmPerPx()
+    {
+        if (Document.Workspace == WorkspaceKind.Teach)
+        {
+            return 1;
+        }
+
+        FrameAxisScale scale = FrameMillimeters.ResolveImageScale(
+            Document.Frame,
+            _mosaicCalibration,
+            Document.Defaults.ReferenceMmPerPx);
+        return FrameMillimeters.MeanMmPerPx(scale);
+    }
+
+    public void SetToolWidth(double widthMm)
+    {
+        if (widthMm <= 0 || Math.Abs(_toolWidthMm - widthMm) < 1e-9)
+        {
+            return;
+        }
+
+        _toolWidthMm = widthMm;
+        if (_pendingPoints.Count > 0)
+        {
+            Invalidate();
+        }
+    }
+
+    public void ApplyProcessSettings(ProcessDefaults incoming)
+    {
+        var copy = ProcessDefaultsCopy.Clone(incoming);
+        StrokeWidths.EnsureStored(copy);
+        if (StrokeWidths.SameSettings(Document.Defaults, copy))
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.Defaults = copy;
+        RaiseDocumentChanged();
+        Invalidate();
+    }
+
+    public void SetWidthSteps(IReadOnlyList<double> steps)
+    {
+        List<double> stored = StrokeWidths.StoredList(steps, Document.Defaults.MinWidth_mm);
+        if (StrokeWidths.SameSettings(
+                Document.Defaults,
+                new ProcessDefaults
+                {
+                    Z_mm = Document.Defaults.Z_mm,
+                    W_deg = Document.Defaults.W_deg,
+                    P_deg = Document.Defaults.P_deg,
+                    R_deg = Document.Defaults.R_deg,
+                    Speed_mm_s = Document.Defaults.Speed_mm_s,
+                    GlueOn = Document.Defaults.GlueOn,
+                    MinWidth_mm = Document.Defaults.MinWidth_mm,
+                    ReferenceMmPerPx = Document.Defaults.ReferenceMmPerPx,
+                    Widths_mm = stored
+                }))
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.Defaults.Widths_mm = stored;
+        RaiseDocumentChanged();
     }
 
     private (double X, double Y) StoredToPixels(double x, double y) =>
@@ -283,19 +388,21 @@ public sealed class PathCanvas : Control
 
     public void FitToView()
     {
+        Size view = ViewSize;
         if (!HasCanvas || _canvasBounds.Width <= 0 || _canvasBounds.Height <= 0 ||
-            ClientSize.Width <= 0 || ClientSize.Height <= 0)
+            view.Width <= 0 || view.Height <= 0)
         {
             return;
         }
 
-        float scaleX = ClientSize.Width / _canvasBounds.Width;
-        float scaleY = ClientSize.Height / _canvasBounds.Height;
+        float scaleX = view.Width / _canvasBounds.Width;
+        float scaleY = view.Height / _canvasBounds.Height;
         float fitted = Math.Min(scaleX, scaleY) * 0.95f;
         _zoom = _space.ClampFittedZoom ? ClampZoom(fitted) : fitted;
         double centerX = _canvasBounds.Left + _canvasBounds.Width / 2.0;
         double centerY = _canvasBounds.Top + _canvasBounds.Height / 2.0;
-        _panOffset = PanForWorldAt(centerX, centerY, ClientSize.Width / 2f, ClientSize.Height / 2f);
+        _panOffset = PanForWorldAt(centerX, centerY, view.Width / 2f, view.Height / 2f);
+        SyncScrollBars();
         Invalidate();
     }
 
@@ -445,6 +552,9 @@ public sealed class PathCanvas : Control
             RebuildMosaic();
 
             SelectedSegmentIndex = null;
+            _selectedPoint = null;
+            _hoverPoint = null;
+            _hoverShapeIndex = null;
             _pendingPoints.Clear();
             _cursorLocal = null;
             _isDraggingVertex = false;
@@ -487,6 +597,7 @@ public sealed class PathCanvas : Control
                     Kind = s.Kind,
                     GlueOn = s.GlueOn,
                     Speed_mm_s = s.Speed_mm_s,
+                    Width_mm = s.Width_mm,
                     X1 = s.X1,
                     Y1 = s.Y1,
                     X2 = s.X2,
@@ -531,6 +642,27 @@ public sealed class PathCanvas : Control
         return true;
     }
 
+    public bool TrySetSegmentProperty(int index, SegmentPropertyField field, double number, bool flag)
+    {
+        if (index < 0 || index >= Document.Segments.Count)
+        {
+            return false;
+        }
+
+        PathSegment segment = Document.Segments[index];
+        if (!SegmentProperties.WouldChange(segment, field, number, flag))
+        {
+            return false;
+        }
+
+        CommitUndoSnapshot();
+        SegmentProperties.Apply(segment, field, number, flag);
+        SyncSelectedMarker();
+        RaiseDocumentChanged();
+        Invalidate();
+        return true;
+    }
+
     public void AppendSegments(IReadOnlyList<PathSegment> segments)
     {
         if (segments.Count == 0)
@@ -540,7 +672,7 @@ public sealed class PathCanvas : Control
 
         CommitUndoSnapshot();
         Document.Segments.AddRange(segments.Select(DocumentClone.CloneSegment));
-        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SelectCreatedSegment();
         _pendingPoints.Clear();
         _cursorLocal = null;
         ApplyMeasuredBounds();
@@ -622,7 +754,7 @@ public sealed class PathCanvas : Control
 
     protected override void OnMouseWheel(MouseEventArgs e)
     {
-        if (!HasCanvas)
+        if (!HasCanvas || _pendingPoints.Count > 0)
         {
             base.OnMouseWheel(e);
             return;
@@ -640,6 +772,7 @@ public sealed class PathCanvas : Control
         PointF world = ScreenToImage(e.Location);
         _zoom = newZoom;
         _panOffset = PanForWorldAt(world.X, world.Y, e.X, e.Y);
+        SyncScrollBars();
         Invalidate();
 
         base.OnMouseWheel(e);
@@ -649,18 +782,36 @@ public sealed class PathCanvas : Control
     {
         Focus();
 
+        if (e.Button == MouseButtons.Right && _pendingPoints.Count > 0)
+        {
+            CancelPending();
+            return;
+        }
+
         if (e.Button == MouseButtons.Middle ||
             (e.Button == MouseButtons.Left && ModifierKeys == Keys.Control))
         {
-            _isPanning = true;
-            _lastMouse = e.Location;
-            Cursor = Cursors.Hand;
+            BeginPan(e.Location);
+            return;
+        }
+
+        if (e.Button == MouseButtons.Right &&
+            ActiveTool == DrawTool.Select &&
+            HasCanvas &&
+            TryShowSelectionMenu(e.Location))
+        {
             return;
         }
 
         if (e.Button == MouseButtons.Right &&
             _space.TryHandleRightClick(this, Document, e.Location, ImageToScreen, AlignGridTo))
         {
+            return;
+        }
+
+        if (e.Button == MouseButtons.Right && HasCanvas && !IsOverSelectable(e.Location))
+        {
+            BeginPan(e.Location);
             return;
         }
 
@@ -692,7 +843,7 @@ public sealed class PathCanvas : Control
                 break;
 
             case DrawTool.Select:
-                SelectSegmentAt(sensorX, sensorY);
+                SelectObjectAt(sensorX, sensorY);
                 break;
 
             case DrawTool.Move:
@@ -750,6 +901,7 @@ public sealed class PathCanvas : Control
             _panOffset.X += e.X - _lastMouse.X;
             _panOffset.Y += e.Y - _lastMouse.Y;
             _lastMouse = e.Location;
+            SyncScrollBars();
             Invalidate();
         }
         else if (_isDraggingVertex && _activeVertexPick != null && HasCanvas && !SimulationMode)
@@ -764,18 +916,28 @@ public sealed class PathCanvas : Control
                     sensorX,
                     sensorY,
                     GetSnapExcludePoints(_activeVertexPick),
-                    ImageToScreen);
+                    ImageToScreen,
+                    SnapToPointEnabled);
                 sensorX = hit.X;
                 sensorY = hit.Y;
-                _snapHover = (sensorX, sensorY);
+                if (SnapToPointEnabled)
+                {
+                    _snapHover = (sensorX, sensorY);
+                }
+                else
+                {
+                    ClearSnapHover();
+                }
             }
             else if (SnapToPointEnabled)
             {
-                (double resolvedX, double resolvedY, bool snapped) = ResolveSnapPosition(
+                (double resolvedX, double resolvedY, bool snappedToPoint) = ResolveSnapPosition(
                     imagePoint.X,
                     imagePoint.Y,
                     GetSnapExcludePoints(_activeVertexPick));
-                _snapHover = snapped ? (resolvedX, resolvedY) : null;
+                sensorX = resolvedX;
+                sensorY = resolvedY;
+                _snapHover = snappedToPoint || Document.Grid.Step_mm > 0 ? (sensorX, sensorY) : null;
             }
             else
             {
@@ -799,21 +961,36 @@ public sealed class PathCanvas : Control
             {
                 UpdateMoveHover(sensorX, sensorY);
             }
+            else if (ActiveTool == DrawTool.Select)
+            {
+                UpdateObjectHover(sensorX, sensorY);
+            }
             else if (_space.HandlesPointer && IsDrawTool(ActiveTool))
             {
-                CanvasSpace.PointerHit hit = _space.AdjustPointer(Document, sensorX, sensorY, null, ImageToScreen);
+                CanvasSpace.PointerHit hit = _space.AdjustPointer(
+                    Document,
+                    sensorX,
+                    sensorY,
+                    null,
+                    ImageToScreen,
+                    SnapToPointEnabled);
                 sensorX = hit.X;
                 sensorY = hit.Y;
-                _snapHover = hit.SnappedToPoint || (_space.HasGrid && Document.Grid.Enabled)
-                    ? (hit.X, hit.Y)
-                    : null;
+                if (SnapToPointEnabled)
+                {
+                    _snapHover = (hit.X, hit.Y);
+                }
+                else
+                {
+                    ClearSnapHover();
+                }
             }
             else if (SnapToPointEnabled && IsDrawTool(ActiveTool))
             {
-                (double resolvedX, double resolvedY, bool snapped) = ResolveDrawClick(sensorX, sensorY);
+                (double resolvedX, double resolvedY, bool snappedToPoint) = ResolveDrawClick(sensorX, sensorY);
                 sensorX = resolvedX;
                 sensorY = resolvedY;
-                _snapHover = snapped ? (resolvedX, resolvedY) : null;
+                _snapHover = snappedToPoint || Document.Grid.Step_mm > 0 ? (resolvedX, resolvedY) : null;
             }
             else
             {
@@ -844,6 +1021,7 @@ public sealed class PathCanvas : Control
         if (!_isDraggingVertex)
         {
             ClearSnapHover();
+            ClearObjectHover();
             if (ActiveTool == DrawTool.Move)
             {
                 Invalidate();
@@ -858,6 +1036,7 @@ public sealed class PathCanvas : Control
         if (_isPanning)
         {
             _isPanning = false;
+            Capture = false;
             Cursor = Cursors.Default;
         }
         else if (_isDraggingVertex && e.Button == MouseButtons.Left)
@@ -906,6 +1085,7 @@ public sealed class PathCanvas : Control
         }
 
         _space.DrawBackground(e.Graphics, Document, _zoom, ClientSize, ImageToScreen, ScreenToImage);
+        DrawProjectGrid(e.Graphics);
         DrawFrame(e.Graphics, Document.Frame, Color.Lime, _space.FrameLabel);
         _space.DrawForeground(e.Graphics, Document, Font, ImageToScreen);
         if (DraftFrame != null &&
@@ -916,6 +1096,7 @@ public sealed class PathCanvas : Control
             DrawFrame(e.Graphics, DraftFrame, Color.Orange, "Draft");
         }
         DrawSegments(e.Graphics);
+        DrawSelectMarkers(e.Graphics);
         // DrawSequenceGaps(e.Graphics);
         DrawSequenceLabels(e.Graphics);
         DrawSimulationOverlay(e.Graphics);
@@ -962,7 +1143,8 @@ public sealed class PathCanvas : Control
         {
             Kind = kind,
             GlueOn = Document.Defaults.GlueOn,
-            Speed_mm_s = Document.Defaults.Speed_mm_s
+            Speed_mm_s = Document.Defaults.Speed_mm_s,
+            Width_mm = kind == SegmentKind.Dot ? 0 : _toolWidthMm
         };
         (segment.X1, segment.Y1) = StorePixels(_pendingPoints[0].X, _pendingPoints[0].Y);
 
@@ -979,7 +1161,7 @@ public sealed class PathCanvas : Control
         Document.Segments.Add(segment);
         _pendingPoints.Clear();
         _cursorLocal = null;
-        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SelectCreatedSegment();
         RaiseDocumentChanged();
         RaiseSelectionChanged();
         Invalidate();
@@ -1019,12 +1201,13 @@ public sealed class PathCanvas : Control
         foreach (PathSegment line in lines)
         {
             FrameMillimeters.ConvertPoints(line, StorePixels);
+            line.Width_mm = _toolWidthMm;
         }
 
         Document.Segments.AddRange(lines);
         _pendingPoints.Clear();
         _cursorLocal = null;
-        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SelectCreatedSegment();
         RaiseDocumentChanged();
         RaiseSelectionChanged();
         StatusMessage?.Invoke(this, "Rectangle added (4 lines)");
@@ -1073,12 +1256,13 @@ public sealed class PathCanvas : Control
         foreach (PathSegment arc in arcs)
         {
             FrameMillimeters.ConvertPoints(arc, StorePixels);
+            arc.Width_mm = _toolWidthMm;
         }
 
         Document.Segments.AddRange(arcs);
         _pendingPoints.Clear();
         _cursorLocal = null;
-        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SelectCreatedSegment();
         RaiseDocumentChanged();
         RaiseSelectionChanged();
         StatusMessage?.Invoke(this, "Circle added (2 arcs)");
@@ -1109,10 +1293,16 @@ public sealed class PathCanvas : Control
             Y1 = storedY
         });
 
-        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SelectCreatedSegment();
         RaiseDocumentChanged();
         RaiseSelectionChanged();
         Invalidate();
+    }
+
+    private void SelectCreatedSegment()
+    {
+        SelectedSegmentIndex = Document.Segments.Count - 1;
+        SyncSelectedMarker();
     }
 
     public void SelectSegment(int? index)
@@ -1123,8 +1313,24 @@ public sealed class PathCanvas : Control
         }
 
         SelectedSegmentIndex = index;
+        SyncSelectedMarker();
         RaiseSelectionChanged();
         Invalidate();
+    }
+
+    private void SyncSelectedMarker()
+    {
+        if (SelectedSegmentIndex is not int index ||
+            index < 0 ||
+            index >= Document.Segments.Count ||
+            Document.Segments[index].Kind != SegmentKind.Dot)
+        {
+            _selectedPoint = null;
+            return;
+        }
+
+        PathSegment segment = Document.Segments[index];
+        _selectedPoint = MarkerFromStored(segment.X1, segment.Y1, index, null);
     }
 
     private static bool IsDrawTool(DrawTool tool) =>
@@ -1171,7 +1377,8 @@ public sealed class PathCanvas : Control
                 imagePoint.X,
                 imagePoint.Y,
                 GetSnapExcludePoints(_activeVertexPick),
-                ImageToScreen);
+                ImageToScreen,
+                SnapToPointEnabled);
             (double teachLocalX, double teachLocalY) = CoordinateTransform.SensorToLocal(
                 hit.X,
                 hit.Y,
@@ -1181,11 +1388,11 @@ public sealed class PathCanvas : Control
         else if (SnapToPointEnabled && HasCanvas)
         {
             PointF imagePoint = ScreenToImage(screenLocation);
-            (double sensorX, double sensorY, bool snapped) = ResolveSnapPosition(
+            (double sensorX, double sensorY, bool snappedToPoint) = ResolveSnapPosition(
                 imagePoint.X,
                 imagePoint.Y,
                 GetSnapExcludePoints(_activeVertexPick));
-            if (snapped)
+            if (snappedToPoint || Document.Grid.Step_mm > 0)
             {
                 (double localX, double localY) = CoordinateTransform.SensorToLocal(
                     sensorX,
@@ -1269,7 +1476,27 @@ public sealed class PathCanvas : Control
             return (snapX, snapY, true);
         }
 
+        if (TrySnapToGrid(sensorX, sensorY, out double gridX, out double gridY))
+        {
+            return (gridX, gridY, false);
+        }
+
         return (sensorX, sensorY, false);
+    }
+
+    private bool TrySnapToGrid(double sensorX, double sensorY, out double x, out double y)
+    {
+        x = sensorX;
+        y = sensorY;
+        if (Document.Grid.Step_mm <= 0)
+        {
+            return false;
+        }
+
+        (double gridX, double gridY) = SensorToGrid(sensorX, sensorY);
+        (double snappedX, double snappedY) = TeachGridSnap.Snap(gridX, gridY, Document.Grid);
+        (x, y) = GridToSensor(snappedX, snappedY);
+        return true;
     }
 
     private IEnumerable<(double LocalX, double LocalY)> GetSnapExcludePoints(VertexPick pick)
@@ -1314,7 +1541,13 @@ public sealed class PathCanvas : Control
     {
         if (_space.HandlesPointer)
         {
-            CanvasSpace.PointerHit hit = _space.AdjustPointer(Document, sensorX, sensorY, null, ImageToScreen);
+            CanvasSpace.PointerHit hit = _space.AdjustPointer(
+                Document,
+                sensorX,
+                sensorY,
+                null,
+                ImageToScreen,
+                SnapToPointEnabled);
             return (hit.X, hit.Y, hit.SnappedToPoint);
         }
 
@@ -1323,8 +1556,13 @@ public sealed class PathCanvas : Control
             return (sensorX, sensorY, false);
         }
 
-        (double snapX, double snapY, bool snapped) = ResolveSnapPosition(sensorX, sensorY);
-        return snapped ? (snapX, snapY, true) : (Math.Round(sensorX), Math.Round(sensorY), false);
+        (double snapX, double snapY, bool snappedToPoint) = ResolveSnapPosition(sensorX, sensorY);
+        if (snappedToPoint || Document.Grid.Step_mm > 0)
+        {
+            return (snapX, snapY, snappedToPoint);
+        }
+
+        return (Math.Round(sensorX), Math.Round(sensorY), false);
     }
 
     private void ClearSnapHover()
@@ -1363,12 +1601,9 @@ public sealed class PathCanvas : Control
             return;
         }
 
-        if (_isDraggingVertex)
+        if (_isDraggingVertex && !SnapToPointEnabled)
         {
-            if (!_space.HandlesPointer && !SnapToPointEnabled)
-            {
-                return;
-            }
+            return;
         }
         else if (ActiveTool == DrawTool.Move)
         {
@@ -1383,6 +1618,11 @@ public sealed class PathCanvas : Control
             return;
         }
 
+        DrawDashedMarker(g, sensorX, sensorY);
+    }
+
+    private void DrawDashedMarker(Graphics g, double sensorX, double sensorY)
+    {
         PointF screen = ImageToScreen(sensorX, sensorY);
         const float radius = 12f;
         using var pen = new Pen(Color.FromArgb(220, 120, 0), 2f)
@@ -1392,40 +1632,344 @@ public sealed class PathCanvas : Control
         g.DrawEllipse(pen, screen.X - radius, screen.Y - radius, radius * 2, radius * 2);
     }
 
-    private void SelectSegmentAt(double sensorX, double sensorY)
+    private void DrawSelectMarkers(Graphics g)
     {
-        double pickRadius = _space.SegmentPickRadius(_zoom);
-        SelectedSegmentIndex = null;
-
-        for (int i = Document.Segments.Count - 1; i >= 0; i--)
+        if (ActiveTool != DrawTool.Select)
         {
-            PathSegment segment = Document.Segments[i];
-            if (IsNearSegment(segment, sensorX, sensorY, pickRadius))
-            {
-                SelectedSegmentIndex = i;
-                break;
-            }
+            return;
         }
 
+        if (_selectedPoint is MarkerPoint selected)
+        {
+            DrawDashedMarker(g, selected.SensorX, selected.SensorY);
+        }
+
+        if (_hoverPoint is MarkerPoint hover &&
+            (_selectedPoint is not MarkerPoint selectedPoint || !SameMarker(hover, selectedPoint)))
+        {
+            DrawDashedMarker(g, hover.SensorX, hover.SensorY);
+        }
+    }
+
+    private void SelectObjectAt(double sensorX, double sensorY)
+    {
+        if (TryPickPoint(sensorX, sensorY, out MarkerPoint point))
+        {
+            ApplyPointSelection(point);
+            return;
+        }
+
+        if (TryPickShape(sensorX, sensorY, out int shapeIndex))
+        {
+            ApplyShapeSelection(shapeIndex);
+            return;
+        }
+
+        ClearObjectSelection();
+    }
+
+    private void ApplyPointSelection(MarkerPoint point)
+    {
+        _selectedPoint = point;
+        SelectedSegmentIndex = point.DotSegmentIndex;
         RaiseSelectionChanged();
         Invalidate();
     }
 
-    private bool IsNearSegment(PathSegment segment, double sensorX, double sensorY, double radius)
+    private void ApplyShapeSelection(int segmentIndex)
     {
-        foreach ((double storedX, double storedY) in GeometryHelper.ExpandSegment(segment))
+        _selectedPoint = null;
+        SelectedSegmentIndex = segmentIndex;
+        RaiseSelectionChanged();
+        Invalidate();
+    }
+
+    private void ClearObjectSelection()
+    {
+        _selectedPoint = null;
+        SelectedSegmentIndex = null;
+        RaiseSelectionChanged();
+        Invalidate();
+    }
+
+    private void UpdateObjectHover(double sensorX, double sensorY)
+    {
+        MarkerPoint? point = TryPickPoint(sensorX, sensorY, out MarkerPoint hit) ? hit : null;
+        int? shape = point == null && TryPickShape(sensorX, sensorY, out int shapeIndex) ? shapeIndex : null;
+        bool changed = !SameMarker(_hoverPoint, point) || _hoverShapeIndex != shape;
+        _hoverPoint = point;
+        _hoverShapeIndex = shape;
+        Cursor = point != null || shape != null ? Cursors.Hand : Cursors.Default;
+        if (changed)
         {
-            (double localX, double localY) = StoredToPixels(storedX, storedY);
-            var (sx, sy) = CoordinateTransform.LocalToSensor(localX, localY, Document.Frame);
-            double dx = sx - sensorX;
-            double dy = sy - sensorY;
-            if (Math.Sqrt(dx * dx + dy * dy) <= radius)
+            Invalidate();
+        }
+    }
+
+    private void ClearObjectHover()
+    {
+        bool hadHover = _hoverPoint != null || _hoverShapeIndex != null;
+        _hoverPoint = null;
+        _hoverShapeIndex = null;
+        if (Cursor == Cursors.Hand)
+        {
+            Cursor = Cursors.Default;
+        }
+
+        if (hadHover)
+        {
+            Invalidate();
+        }
+    }
+
+    private bool TryShowSelectionMenu(Point screen)
+    {
+        PointF image = ScreenToImage(screen);
+        if (TryPickPoint(image.X, image.Y, out MarkerPoint point))
+        {
+            ApplyPointSelection(point);
+            if (_space.HasGrid)
             {
-                return true;
+                ShowGridOriginMenu(screen, point.OriginX, point.OriginY);
             }
+
+            return true;
+        }
+
+        if (TryPickShape(image.X, image.Y, out int shapeIndex))
+        {
+            ApplyShapeSelection(shapeIndex);
+            return true;
         }
 
         return false;
+    }
+
+    private void ShowGridOriginMenu(Point screen, double originX, double originY)
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Set as grid origin", null, (_, _) => AlignGridTo(originX, originY));
+        menu.Closed += (_, _) =>
+        {
+            if (!IsHandleCreated || IsDisposed)
+            {
+                return;
+            }
+
+            BeginInvoke(() =>
+            {
+                if (!menu.IsDisposed)
+                {
+                    menu.Dispose();
+                }
+            });
+        };
+        menu.Show(this, screen);
+    }
+
+    private bool TryPickPoint(double sensorX, double sensorY, out MarkerPoint point)
+    {
+        PointF click = ImageToScreen(sensorX, sensorY);
+        double best = SnapPointHelper.DefaultPickRadiusScreenPx;
+        point = default;
+        bool found = false;
+
+        for (int i = Document.Segments.Count - 1; i >= 0; i--)
+        {
+            PathSegment segment = Document.Segments[i];
+            foreach ((double x, double y) in GeometryHelper.ExpandSegment(segment))
+            {
+                MarkerPoint candidate = MarkerFromStored(x, y, i, null);
+                double distance = ScreenDistance(click, ImageToScreen(candidate.SensorX, candidate.SensorY));
+                if (distance <= SnapPointHelper.DefaultPickRadiusScreenPx && (!found || distance < best))
+                {
+                    best = distance;
+                    point = candidate;
+                    found = true;
+                }
+            }
+        }
+
+        if (_space.HasReferencePoints)
+        {
+            foreach (ReferencePoint reference in Document.ReferencePoints)
+            {
+                double distance = ScreenDistance(click, ImageToScreen(reference.X_mm, reference.Y_mm));
+                if (distance <= SnapPointHelper.DefaultPickRadiusScreenPx && (!found || distance < best))
+                {
+                    best = distance;
+                    point = new MarkerPoint(reference.X_mm, reference.Y_mm, reference.X_mm, reference.Y_mm, null, reference.Id);
+                    found = true;
+                }
+            }
+        }
+
+        var frameOrigin = CoordinateTransform.LocalToSensor(0, 0, Document.Frame);
+        double frameDistance = ScreenDistance(click, ImageToScreen(frameOrigin.X, frameOrigin.Y));
+        if (frameDistance <= SnapPointHelper.DefaultPickRadiusScreenPx && (!found || frameDistance < best))
+        {
+            point = new MarkerPoint(0, 0, frameOrigin.X, frameOrigin.Y, null, null, true);
+            found = true;
+        }
+
+        return found;
+    }
+
+    private bool TryPickShape(double sensorX, double sensorY, out int segmentIndex)
+    {
+        const float pickRadiusPx = 12f;
+        PointF click = ImageToScreen(sensorX, sensorY);
+        segmentIndex = -1;
+        double best = double.MaxValue;
+        for (int i = Document.Segments.Count - 1; i >= 0; i--)
+        {
+            PathSegment segment = Document.Segments[i];
+            if (segment.Kind == SegmentKind.Dot)
+            {
+                continue;
+            }
+
+            double distance = SegmentScreenDistance(segment, click);
+            float stroke = StrokeWidths.ScreenPixels(
+                StrokeWidths.Effective(segment, Document.Defaults.MinWidth_mm),
+                ActiveMmPerPx(),
+                _zoom);
+            float pick = Math.Max(pickRadiusPx, stroke / 2f);
+            if (distance <= pick && distance < best)
+            {
+                best = distance;
+                segmentIndex = i;
+            }
+        }
+
+        return segmentIndex >= 0;
+    }
+
+    private int? SelectedShapeIndex()
+    {
+        if (SelectedSegmentIndex is int index &&
+            index >= 0 &&
+            index < Document.Segments.Count &&
+            Document.Segments[index].Kind != SegmentKind.Dot)
+        {
+            return index;
+        }
+
+        return null;
+    }
+
+    private bool IsHighlightedShape(int index, int? primary)
+    {
+        if (primary is not int shape)
+        {
+            return false;
+        }
+
+        if (index == shape)
+        {
+            return true;
+        }
+
+        return PointEditHelper.TryGetCircleForArc(
+                Document.Segments,
+                shape,
+                out int arcA,
+                out int arcB,
+                out _,
+                out _,
+                out _) &&
+            (index == arcA || index == arcB);
+    }
+
+    private MarkerPoint MarkerFromStored(double x, double y, int? dotSegmentIndex, string? referenceId)
+    {
+        (double pixelX, double pixelY) = StoredToPixels(x, y);
+        var sensor = CoordinateTransform.LocalToSensor(pixelX, pixelY, Document.Frame);
+        return new MarkerPoint(x, y, sensor.X, sensor.Y, dotSegmentIndex, referenceId);
+    }
+
+    private static bool SameMarker(MarkerPoint? left, MarkerPoint? right)
+    {
+        if (left is not MarkerPoint a || right is not MarkerPoint b)
+        {
+            return left is null && right is null;
+        }
+
+        return a.IsFrameOrigin == b.IsFrameOrigin &&
+               a.ReferenceId == b.ReferenceId &&
+               a.DotSegmentIndex == b.DotSegmentIndex &&
+               Math.Abs(a.OriginX - b.OriginX) < 1e-6 &&
+               Math.Abs(a.OriginY - b.OriginY) < 1e-6;
+    }
+
+    private double SegmentScreenDistance(PathSegment segment, PointF click)
+    {
+        switch (segment.Kind)
+        {
+            case SegmentKind.Dot:
+                return ScreenDistance(click, StoredToScreen(segment.X1, segment.Y1));
+
+            case SegmentKind.Line:
+                return DistanceToSegment(
+                    click,
+                    StoredToScreen(segment.X1, segment.Y1),
+                    StoredToScreen(segment.X2, segment.Y2));
+
+            case SegmentKind.Arc:
+                IReadOnlyList<(double X, double Y)> samples = PathSimulationService.SampleArc(segment);
+                if (samples.Count == 0)
+                {
+                    return double.MaxValue;
+                }
+
+                PointF previous = StoredToScreen(samples[0].X, samples[0].Y);
+                if (samples.Count == 1)
+                {
+                    return ScreenDistance(click, previous);
+                }
+
+                double best = double.MaxValue;
+                for (int i = 1; i < samples.Count; i++)
+                {
+                    PointF next = StoredToScreen(samples[i].X, samples[i].Y);
+                    best = Math.Min(best, DistanceToSegment(click, previous, next));
+                    previous = next;
+                }
+
+                return best;
+
+            default:
+                return double.MaxValue;
+        }
+    }
+
+    private PointF StoredToScreen(double x, double y)
+    {
+        (double pixelX, double pixelY) = StoredToPixels(x, y);
+        var (sensorX, sensorY) = CoordinateTransform.LocalToSensor(pixelX, pixelY, Document.Frame);
+        return ImageToScreen(sensorX, sensorY);
+    }
+
+    private static double ScreenDistance(PointF a, PointF b)
+    {
+        double dx = a.X - b.X;
+        double dy = a.Y - b.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    private static double DistanceToSegment(PointF point, PointF start, PointF end)
+    {
+        double dx = end.X - start.X;
+        double dy = end.Y - start.Y;
+        double lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared < 1e-6)
+        {
+            return ScreenDistance(point, start);
+        }
+
+        double t = Math.Clamp(((point.X - start.X) * dx + (point.Y - start.Y) * dy) / lengthSquared, 0, 1);
+        var projection = new PointF((float)(start.X + t * dx), (float)(start.Y + t * dy));
+        return ScreenDistance(point, projection);
     }
 
     private void DrawFrame(Graphics g, FrameDefinition frame, Color color, string label)
@@ -1574,14 +2118,18 @@ public sealed class PathCanvas : Control
         for (int i = 0; i < Document.Segments.Count; i++)
         {
             PathSegment segment = Document.Segments[i];
-            bool selected = SelectedSegmentIndex == i;
+            bool selected = segment.Kind != SegmentKind.Dot && IsHighlightedShape(i, SelectedShapeIndex());
+            bool hover = segment.Kind != SegmentKind.Dot && !selected && IsHighlightedShape(i, _hoverShapeIndex);
             Color color = segment.GlueOn ? Color.DeepSkyBlue : Color.Orange;
             if (selected)
             {
                 color = Color.Yellow;
             }
+            else if (hover)
+            {
+                color = Color.FromArgb(120, 255, 160);
+            }
 
-            using var pen = new Pen(color, selected ? 3 : 2);
             using var brush = new SolidBrush(color);
 
             switch (segment.Kind)
@@ -1592,21 +2140,34 @@ public sealed class PathCanvas : Control
                     break;
 
                 case SegmentKind.Line:
-                    (double lineX1, double lineY1) = StoredToPixels(segment.X1, segment.Y1);
-                    (double lineX2, double lineY2) = StoredToPixels(segment.X2, segment.Y2);
-                    DrawLine(g, pen, lineX1, lineY1, lineX2, lineY2);
-                    DrawPoint(g, brush, lineX1, lineY1, 4);
-                    DrawPoint(g, brush, lineX2, lineY2, 4);
+                    using (Pen pen = CreateStrokePen(color, segment.Width_mm))
+                    {
+                        (double lineX1, double lineY1) = StoredToPixels(segment.X1, segment.Y1);
+                        (double lineX2, double lineY2) = StoredToPixels(segment.X2, segment.Y2);
+                        DrawLine(g, pen, lineX1, lineY1, lineX2, lineY2);
+                    }
+
+                    (double startX, double startY) = StoredToPixels(segment.X1, segment.Y1);
+                    (double endX, double endY) = StoredToPixels(segment.X2, segment.Y2);
+                    DrawPoint(g, brush, startX, startY, 4);
+                    DrawPoint(g, brush, endX, endY, 4);
                     break;
 
                 case SegmentKind.Arc:
-                    (double arcX1, double arcY1) = StoredToPixels(segment.X1, segment.Y1);
-                    (double arcX2, double arcY2) = StoredToPixels(segment.X2, segment.Y2);
-                    (double arcX3, double arcY3) = StoredToPixels(segment.X3, segment.Y3);
-                    DrawArc(g, pen, arcX1, arcY1, arcX2, arcY2, arcX3, arcY3);
-                    DrawPoint(g, brush, arcX1, arcY1, 4);
-                    DrawPoint(g, brush, arcX2, arcY2, 4);
-                    DrawPoint(g, brush, arcX3, arcY3, 4);
+                    using (Pen pen = CreateStrokePen(color, segment.Width_mm))
+                    {
+                        (double arcX1, double arcY1) = StoredToPixels(segment.X1, segment.Y1);
+                        (double arcX2, double arcY2) = StoredToPixels(segment.X2, segment.Y2);
+                        (double arcX3, double arcY3) = StoredToPixels(segment.X3, segment.Y3);
+                        DrawArc(g, pen, arcX1, arcY1, arcX2, arcY2, arcX3, arcY3);
+                    }
+
+                    (double arcStartX, double arcStartY) = StoredToPixels(segment.X1, segment.Y1);
+                    (double arcMidX, double arcMidY) = StoredToPixels(segment.X2, segment.Y2);
+                    (double arcEndX, double arcEndY) = StoredToPixels(segment.X3, segment.Y3);
+                    DrawPoint(g, brush, arcStartX, arcStartY, 4);
+                    DrawPoint(g, brush, arcMidX, arcMidY, 4);
+                    DrawPoint(g, brush, arcEndX, arcEndY, 4);
                     break;
             }
         }
@@ -1634,7 +2195,8 @@ public sealed class PathCanvas : Control
             return;
         }
 
-        using var pen = new Pen(Color.Magenta, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+        using var pen = CreateStrokePen(Color.Magenta, _toolWidthMm);
+        pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
 
         switch (ActiveTool)
         {
@@ -1751,6 +2313,18 @@ public sealed class PathCanvas : Control
         Invalidate();
     }
 
+    private Pen CreateStrokePen(Color color, double widthMm)
+    {
+        double width = widthMm > 0 ? widthMm : Document.Defaults.MinWidth_mm;
+        float px = StrokeWidths.ScreenPixels(width, ActiveMmPerPx(), _zoom);
+        return new Pen(color, px)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+        };
+    }
+
     private void DrawLine(Graphics g, Pen pen, double lx1, double ly1, double lx2, double ly2)
     {
         var (sx1, sy1) = CoordinateTransform.LocalToSensor(lx1, ly1, Document.Frame);
@@ -1864,6 +2438,50 @@ public sealed class PathCanvas : Control
         return delta;
     }
 
+    private void DrawProjectGrid(Graphics graphics) =>
+        GridPainter.Draw(graphics, Document.Grid, ClientSize, GridToScreen, ScreenToGrid);
+
+    private PointF GridToScreen(double gridX, double gridY)
+    {
+        (double sensorX, double sensorY) = GridToSensor(gridX, gridY);
+        return ImageToScreen(sensorX, sensorY);
+    }
+
+    private (double X, double Y) ScreenToGrid(Point screen)
+    {
+        PointF sensor = ScreenToImage(screen);
+        return SensorToGrid(sensor.X, sensor.Y);
+    }
+
+    /// <summary>
+    /// Grid values use stored path units. Teach and a calibrated CV project store millimeters.
+    /// An uncalibrated CV frame still stores pixels, so the same numbers are frame pixels.
+    /// </summary>
+    private (double X, double Y) SensorToGrid(double sensorX, double sensorY)
+    {
+        if (_space is TeachCanvasSpace)
+        {
+            return (sensorX, sensorY);
+        }
+
+        (double localX, double localY) = CoordinateTransform.SensorToLocal(sensorX, sensorY, Document.Frame);
+        return StorePixels(localX, localY);
+    }
+
+    private (double X, double Y) GridToSensor(double gridX, double gridY)
+    {
+        if (_space is TeachCanvasSpace)
+        {
+            return (gridX, gridY);
+        }
+
+        (double pixelX, double pixelY) = StoredToPixels(gridX, gridY);
+        return CoordinateTransform.LocalToSensor(pixelX, pixelY, Document.Frame);
+    }
+
+    private string GridUnitLabel() =>
+        _space is TeachCanvasSpace || TryStoredScale(out _) ? "mm" : "px";
+
     private PointF ScreenToImage(Point screenPoint) =>
         _space.ScreenYIncreasesUp
             ? new PointF(
@@ -1937,7 +2555,7 @@ public sealed class PathCanvas : Control
         Document.Grid.IsAligned = true;
         Document.Grid.Enabled = true;
         RaiseDocumentChanged();
-        StatusMessage?.Invoke(this, $"Grid aligned to ({x:0.###}, {y:0.###}) mm");
+        StatusMessage?.Invoke(this, $"Grid origin set to ({x:0.###}, {y:0.###}) {GridUnitLabel()}");
         Invalidate();
     }
 
@@ -1952,15 +2570,22 @@ public sealed class PathCanvas : Control
         Invalidate();
     }
 
-    public void SetGridStep(double stepMm)
+    public void SetGridStep(double stepMm, IReadOnlyList<double> steps)
     {
-        if (!_space.HasGrid || stepMm <= 0 || Math.Abs(Document.Grid.Step_mm - stepMm) < 1e-9)
+        if (!_space.HasGrid || stepMm <= 0)
         {
             return;
         }
 
+        Document.Grid.Steps_mm = steps.Count > 0
+            ? steps.ToList()
+            : new List<double>(TeachGridSettings.DefaultStepsMm);
+        bool stepChanged = Math.Abs(Document.Grid.Step_mm - stepMm) >= 1e-9;
         Document.Grid.Step_mm = stepMm;
-        Invalidate();
+        if (stepChanged)
+        {
+            Invalidate();
+        }
     }
 
     public void ClearHistory()
@@ -2014,7 +2639,11 @@ public sealed class PathCanvas : Control
             _canvasBounds = RectangleF.Empty;
             _zoom = 1f;
             _panOffset = PointF.Empty;
+            SyncScrollBars();
             SelectedSegmentIndex = null;
+            _selectedPoint = null;
+            _hoverPoint = null;
+            _hoverShapeIndex = null;
             _pendingPoints.Clear();
             _cursorLocal = null;
             _snapHover = null;
@@ -2040,6 +2669,157 @@ public sealed class PathCanvas : Control
         if (_space.TryMeasureBackground(Document, out RectangleF bounds))
         {
             _canvasBounds = bounds;
+            SyncScrollBars();
+        }
+    }
+
+    private Size ViewSize
+    {
+        get
+        {
+            int barWidth = SystemInformation.VerticalScrollBarWidth;
+            int barHeight = SystemInformation.HorizontalScrollBarHeight;
+            return new Size(
+                Math.Max(1, ClientSize.Width - barWidth),
+                Math.Max(1, ClientSize.Height - barHeight));
+        }
+    }
+
+    private void BeginPan(Point location)
+    {
+        _isPanning = true;
+        _lastMouse = location;
+        Capture = true;
+        Cursor = Cursors.SizeAll;
+    }
+
+    private bool IsOverSelectable(Point screen)
+    {
+        if (!HasCanvas)
+        {
+            return false;
+        }
+
+        PointF image = ScreenToImage(screen);
+        return TryPickPoint(image.X, image.Y, out _) ||
+               TryPickShape(image.X, image.Y, out _);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        LayoutScrollBars();
+        SyncScrollBars();
+    }
+
+    private void LayoutScrollBars()
+    {
+        int barWidth = SystemInformation.VerticalScrollBarWidth;
+        int barHeight = SystemInformation.HorizontalScrollBarHeight;
+        int width = Math.Max(0, ClientSize.Width - barWidth);
+        int height = Math.Max(0, ClientSize.Height - barHeight);
+        _verticalScroll.SetBounds(ClientSize.Width - barWidth, 0, barWidth, height);
+        _horizontalScroll.SetBounds(0, ClientSize.Height - barHeight, width, barHeight);
+        _scrollCorner.SetBounds(ClientSize.Width - barWidth, ClientSize.Height - barHeight, barWidth, barHeight);
+    }
+
+    private RectangleF ScrollWorld()
+    {
+        RectangleF content = _canvasBounds;
+        if (content.Width < 1 || content.Height < 1)
+        {
+            content = new RectangleF(-50, -50, 100, 100);
+        }
+
+        content = RectangleF.Union(content, new RectangleF(-5, -5, 10, 10));
+        float padX = Math.Max(ViewSize.Width / Math.Max(_zoom, 0.001f), 10);
+        float padY = Math.Max(ViewSize.Height / Math.Max(_zoom, 0.001f), 10);
+        return RectangleF.Inflate(content, padX, padY);
+    }
+
+    private void SyncScrollBars()
+    {
+        if (_adjustingScroll)
+        {
+            return;
+        }
+
+        RectangleF world = ScrollWorld();
+        int maxX = ScrollLimit(world.Width * _zoom, ViewSize.Width);
+        int maxY = ScrollLimit(world.Height * _zoom, ViewSize.Height);
+        int scrollX = Math.Clamp((int)Math.Round(-world.Left * _zoom - _panOffset.X), 0, maxX);
+        int scrollY = Math.Clamp(
+            _space.ScreenYIncreasesUp
+                ? (int)Math.Round(world.Bottom * _zoom - _panOffset.Y)
+                : (int)Math.Round(-world.Top * _zoom - _panOffset.Y),
+            0,
+            maxY);
+        _panOffset = _space.ScreenYIncreasesUp
+            ? new PointF(-world.Left * _zoom - scrollX, world.Bottom * _zoom - scrollY)
+            : new PointF(-world.Left * _zoom - scrollX, -world.Top * _zoom - scrollY);
+        _adjustingScroll = true;
+        try
+        {
+            SetScrollBar(_horizontalScroll, scrollX, world.Width * _zoom, ViewSize.Width);
+            SetScrollBar(_verticalScroll, scrollY, world.Height * _zoom, ViewSize.Height);
+        }
+        finally
+        {
+            _adjustingScroll = false;
+        }
+    }
+
+    private void OnScrollValueChanged()
+    {
+        if (_adjustingScroll)
+        {
+            return;
+        }
+
+        RectangleF world = ScrollWorld();
+        _panOffset = _space.ScreenYIncreasesUp
+            ? new PointF(
+                -world.Left * _zoom - _horizontalScroll.Value,
+                world.Bottom * _zoom - _verticalScroll.Value)
+            : new PointF(
+                -world.Left * _zoom - _horizontalScroll.Value,
+                -world.Top * _zoom - _verticalScroll.Value);
+        Invalidate();
+    }
+
+    private static int ScrollLimit(float worldPixels, int viewport)
+    {
+        int extent = ScrollExtent(worldPixels);
+        int large = Math.Clamp(Math.Max(viewport, 1), 1, extent);
+        return Math.Max(0, extent - large);
+    }
+
+    private static int ScrollExtent(float worldPixels) =>
+        (int)Math.Clamp(Math.Ceiling(Math.Max(worldPixels, 1)), 1, 1_000_000_000);
+
+    private static void SetScrollBar(ScrollBar bar, int value, float worldPixels, int viewport)
+    {
+        int extent = ScrollExtent(worldPixels);
+        int large = Math.Clamp(Math.Max(viewport, 1), 1, extent);
+        int maximum = Math.Max(extent - 1, 0);
+        if (large > maximum + 1)
+        {
+            large = maximum + 1;
+        }
+
+        int maxValue = Math.Max(0, maximum - large + 1);
+        int clamped = Math.Clamp(value, 0, maxValue);
+        if (bar.Value > maximum)
+        {
+            bar.Value = 0;
+        }
+
+        bar.Maximum = maximum;
+        bar.LargeChange = large;
+        bar.SmallChange = Math.Max(1, large / 10);
+        if (bar.Value != clamped)
+        {
+            bar.Value = clamped;
         }
     }
 

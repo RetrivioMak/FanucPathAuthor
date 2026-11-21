@@ -39,6 +39,28 @@ public static class FrameMillimeters
         return scale.IsDefined;
     }
 
+    /// <summary>
+    /// Calibration scale when the file is loaded. Otherwise the CV reference scale, isotropic.
+    /// </summary>
+    public static FrameAxisScale ResolveImageScale(
+        FrameDefinition frame,
+        RobotCalibrationFile? calibration,
+        double referenceMmPerPx)
+    {
+        if (TryGetScale(frame, calibration, out FrameAxisScale scale))
+        {
+            return scale;
+        }
+
+        double reference = referenceMmPerPx > 1e-12
+            ? referenceMmPerPx
+            : ProcessDefaults.DefaultReferenceMmPerPx;
+        return new FrameAxisScale(reference, reference);
+    }
+
+    public static double MeanMmPerPx(FrameAxisScale scale) =>
+        (scale.X_mmPerPx + scale.Y_mmPerPx) / 2.0;
+
     public static (double X, double Y) ToMillimeters(double localX_px, double localY_px, FrameAxisScale scale) =>
         (localX_px * scale.X_mmPerPx, localY_px * scale.Y_mmPerPx);
 

@@ -82,6 +82,18 @@ internal static class ToolIconFactory
         g.DrawLine(pen, 16, 3, 16, 29);
     });
 
+    public static Image Grid => Draw(g =>
+    {
+        using var brush = new SolidBrush(Color.FromArgb(90, 90, 90));
+        for (int y = 0; y < 3; y++)
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                g.FillEllipse(brush, 6 + x * 8, 6 + y * 8, 4, 4);
+            }
+        }
+    });
+
     public static Image Snap => Draw(g =>
     {
         using var pen = new Pen(Color.FromArgb(220, 120, 0), 2.5f);

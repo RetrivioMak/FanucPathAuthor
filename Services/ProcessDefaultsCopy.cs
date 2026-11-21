@@ -12,6 +12,9 @@ public static class ProcessDefaultsCopy
             P_deg = source.P_deg,
             R_deg = source.R_deg,
             Speed_mm_s = source.Speed_mm_s,
-            GlueOn = source.GlueOn
+            GlueOn = source.GlueOn,
+            MinWidth_mm = source.MinWidth_mm,
+            ReferenceMmPerPx = source.ReferenceMmPerPx,
+            Widths_mm = new List<double>(source.Widths_mm)
         };
 }

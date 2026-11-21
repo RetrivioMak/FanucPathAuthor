@@ -4,28 +4,12 @@ namespace DispensePathAuthor.Controls;
 
 public partial class TeachProjectPanel : UserControl
 {
-    private bool _updating;
-
     public TeachProjectPanel()
     {
         InitializeComponent();
         _importButton.Click += (_, _) => ImportRequested?.Invoke(this, EventArgs.Empty);
         _removeButton.Click += (_, _) => RemoveRequested?.Invoke(this, EventArgs.Empty);
         _alignButton.Click += (_, _) => AlignRequested?.Invoke(this, EventArgs.Empty);
-        _gridEnabled.CheckedChanged += (_, _) =>
-        {
-            if (!_updating)
-            {
-                GridEnabledChanged?.Invoke(this, EventArgs.Empty);
-            }
-        };
-        _gridStep.ValueChanged += (_, _) =>
-        {
-            if (!_updating)
-            {
-                GridStepChanged?.Invoke(this, EventArgs.Empty);
-            }
-        };
         _pointList.MouseUp += OnPointListMouseUp;
     }
 
@@ -38,11 +22,6 @@ public partial class TeachProjectPanel : UserControl
             _hint.MaximumSize = limit;
         }
 
-        if (_originLabel.MaximumSize != limit)
-        {
-            _originLabel.MaximumSize = limit;
-        }
-
         base.OnLayout(e);
     }
 
@@ -52,54 +31,32 @@ public partial class TeachProjectPanel : UserControl
 
     public event EventHandler? AlignRequested;
 
-    public event EventHandler? GridEnabledChanged;
-
-    public event EventHandler? GridStepChanged;
-
     public string? SelectedPointId =>
         _pointList.SelectedItems.Count == 0 ? null : _pointList.SelectedItems[0].Tag as string;
-
-    public bool GridEnabled => _gridEnabled.Checked;
-
-    public double GridStepMillimeters => (double)_gridStep.Value;
 
     public void Show(PathDocument document)
     {
         string? selectedId = SelectedPointId;
-        _updating = true;
-        try
+        _pointList.Items.Clear();
+        foreach (ReferencePoint point in document.ReferencePoints)
         {
-            _pointList.Items.Clear();
-            foreach (ReferencePoint point in document.ReferencePoints)
-            {
-                var item = new ListViewItem(point.Name);
-                item.SubItems.Add(point.X_mm.ToString("0.000"));
-                item.SubItems.Add(point.Y_mm.ToString("0.000"));
-                item.Tag = point.Id;
-                _pointList.Items.Add(item);
-            }
+            var item = new ListViewItem(point.Name);
+            item.SubItems.Add(point.X_mm.ToString("0.000"));
+            item.SubItems.Add(point.Y_mm.ToString("0.000"));
+            item.Tag = point.Id;
+            _pointList.Items.Add(item);
+        }
 
-            if (!string.IsNullOrWhiteSpace(selectedId))
+        if (!string.IsNullOrWhiteSpace(selectedId))
+        {
+            foreach (ListViewItem item in _pointList.Items)
             {
-                foreach (ListViewItem item in _pointList.Items)
+                if (item.Tag is string id && id == selectedId)
                 {
-                    if (item.Tag is string id && id == selectedId)
-                    {
-                        item.Selected = true;
-                        break;
-                    }
+                    item.Selected = true;
+                    break;
                 }
             }
-
-            _gridEnabled.Checked = document.Grid.Enabled;
-            _gridStep.Value = Math.Max(_gridStep.Minimum, Math.Min(_gridStep.Maximum, (decimal)document.Grid.Step_mm));
-            _originLabel.Text = document.Grid.IsAligned
-                ? $"Grid origin: ({document.Grid.OriginX_mm:0.###}, {document.Grid.OriginY_mm:0.###}) mm"
-                : "Grid origin: robot (0, 0) until a point is aligned";
-        }
-        finally
-        {
-            _updating = false;
         }
 
         _removeButton.Enabled = document.ReferencePoints.Count > 0 && SelectedPointId != null;
@@ -121,8 +78,20 @@ public partial class TeachProjectPanel : UserControl
 
         item.Selected = true;
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Align grid to this point", null, (_, _) => AlignRequested?.Invoke(this, EventArgs.Empty));
-        menu.Closed += (_, _) => menu.Dispose();
+        menu.Items.Add("Set as grid origin", null, (_, _) => AlignRequested?.Invoke(this, EventArgs.Empty));
+        menu.Closed += (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+            {
+                BeginInvoke(() =>
+                {
+                    if (!menu.IsDisposed)
+                    {
+                        menu.Dispose();
+                    }
+                });
+            }
+        };
         menu.Show(_pointList, e.Location);
     }
 }
