@@ -5,7 +5,7 @@ namespace DispensePathAuthor.Export.Fanuc;
 public partial class FanucExportDialog : Form
 {
     private const int DialogPadding = 12;
-    private const int ContentWidth = 1100;
+    protected const int ContentWidth = 1100;
     private const int FormClientWidth = ContentWidth + DialogPadding * 2;
     private const int ButtonWidth = 132;
     private const int ButtonHeight = 44;
@@ -163,7 +163,7 @@ public partial class FanucExportDialog : Form
 
     private void InitializeFormShell()
     {
-        Text = "Fanuc export";
+        Text = FormTitle;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -204,6 +204,7 @@ public partial class FanucExportDialog : Form
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
+        AddProcessSections(content);
         AddSection(content, BuildModeGroup());
         AddSection(content, BuildFovGroup());
         AddSection(content, BuildAngleGroup());
@@ -216,7 +217,17 @@ public partial class FanucExportDialog : Form
         Controls.Add(_root);
     }
 
-    private void AddSection(TableLayoutPanel parent, GroupBox group)
+    protected virtual string FormTitle => "Fanuc export";
+
+    protected virtual void AddProcessSections(TableLayoutPanel content)
+    {
+    }
+
+    protected virtual void OnSettingsCaptured()
+    {
+    }
+
+    protected void AddSection(TableLayoutPanel parent, GroupBox group)
     {
         _sectionGroups.Add(group);
         parent.Controls.Add(group);
@@ -323,7 +334,7 @@ public partial class FanucExportDialog : Form
         return WrapGroupBox("Needle offset", layout);
     }
 
-    private static TableLayoutPanel CreateSectionLayout(int rowCount)
+    protected static TableLayoutPanel CreateSectionLayout(int rowCount)
     {
         var layout = new TableLayoutPanel
         {
@@ -412,7 +423,7 @@ public partial class FanucExportDialog : Form
         return wrapper;
     }
 
-    private GroupBox WrapGroupBox(string title, Control content)
+    protected GroupBox WrapGroupBox(string title, Control content)
     {
         var group = new GroupBox
         {
@@ -493,6 +504,7 @@ public partial class FanucExportDialog : Form
             UserFrame = (int)_userFrame.Value,
             UserTool = (int)_userTool.Value
         };
+        OnSettingsCaptured();
     }
 
     private void UpdateCalibrationInfo(FanucCalibrationSnapshot calibration)
@@ -558,7 +570,7 @@ public partial class FanucExportDialog : Form
         _needleR.Enabled = enabled;
     }
 
-    private static NumericUpDown CreateNumeric(decimal min, decimal max, decimal increment, int decimals) =>
+    protected static NumericUpDown CreateNumeric(decimal min, decimal max, decimal increment, int decimals) =>
         new()
         {
             Minimum = min,
@@ -568,10 +580,10 @@ public partial class FanucExportDialog : Form
             Width = 120
         };
 
-    private static decimal Clamp(NumericUpDown control, decimal value) =>
+    protected static decimal Clamp(NumericUpDown control, decimal value) =>
         Math.Max(control.Minimum, Math.Min(control.Maximum, value));
 
-    private static Label HintLabel(string text, int width) =>
+    protected static Label HintLabel(string text, int width) =>
         new()
         {
             Text = text,

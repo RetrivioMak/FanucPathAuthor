@@ -112,7 +112,7 @@ If you see `CS0579` duplicate assembly attributes or `Xunit` errors in the **mai
 
 - No Euresys / Open eVision license required in this tool
 - Calibration JSON is read-only input from Nilgiris
-- Z / W / P are set in **Export settings** (saved in path JSON `defaults`). Feed is not stored; the export module computes it from thickness, nozzle, and pressure.
+- Z / W / P are set in **Export settings** (saved in path JSON `defaults`). Feed is not stored. **Fanuc** writes `100mm/sec`. **Fanuc feed** computes each motion from segment width and the flow entered on its form (semicircular bead, constant delivery).
 - Runtime Frame offset on the robot is **not** part of this MVP
 
 ## Post-MVP (planned)

@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DispensePathAuthor.Import.D
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DispensePathAuthor.Export.Fanuc", "DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj", "{F6A7B8C9-D0E1-2345-F012-456789012345}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DispensePathAuthor.Export.FanucFeed", "DispensePathAuthor.Export.FanucFeed\DispensePathAuthor.Export.FanucFeed.csproj", "{B8C9D0E1-F2A3-4567-1234-678901234567}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -42,5 +44,9 @@ Global
 		{F6A7B8C9-D0E1-2345-F012-456789012345}.Debug|x64.Build.0 = Debug|Any CPU
 		{F6A7B8C9-D0E1-2345-F012-456789012345}.Release|x64.ActiveCfg = Release|Any CPU
 		{F6A7B8C9-D0E1-2345-F012-456789012345}.Release|x64.Build.0 = Release|Any CPU
+		{B8C9D0E1-F2A3-4567-1234-678901234567}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B8C9D0E1-F2A3-4567-1234-678901234567}.Debug|x64.Build.0 = Debug|Any CPU
+		{B8C9D0E1-F2A3-4567-1234-678901234567}.Release|x64.ActiveCfg = Release|Any CPU
+		{B8C9D0E1-F2A3-4567-1234-678901234567}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

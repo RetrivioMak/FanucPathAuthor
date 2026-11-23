@@ -7,8 +7,7 @@ namespace DispensePathAuthor.Export.Fanuc;
 public static class FanucExporter
 {
     /// <summary>
-    /// Motion-line token required by the LS format. Process feed is not authored here;
-    /// the export module will replace this from thickness, nozzle, and pressure.
+    /// Feed used when the caller does not supply one. Fanuc feed passes a speed per point.
     /// </summary>
     private const double DefaultLsSpeed_mm_s = 100;
 
@@ -18,7 +17,9 @@ public static class FanucExporter
         string filePath,
         bool applyFrameYReflection = true,
         int userFrame = 1,
-        int userTool = 1)
+        int userTool = 1,
+        Func<FanucExportPoint, int, double>? speedMmPerSec = null,
+        string? processNote = null)
     {
         IReadOnlyList<FanucExportPoint> exportWaypoints = FilterExportWaypoints(waypoints);
         if (exportWaypoints.Count == 0)
@@ -33,7 +34,6 @@ public static class FanucExporter
 
         string uf = userFrame.ToString(CultureInfo.InvariantCulture);
         string ut = userTool.ToString(CultureInfo.InvariantCulture);
-        string lsSpeed = $"{Format(DefaultLsSpeed_mm_s)}mm/sec";
 
         var sb = new StringBuilder();
         sb.AppendLine($"/PROG  {SanitizeProgramName(programName)}");
@@ -53,14 +53,27 @@ public static class FanucExporter
         sb.AppendLine($"   2:  UTOOL_NUM={ut} ;");
 
         int lineNo = 3;
+        if (!string.IsNullOrWhiteSpace(processNote))
+        {
+            sb.AppendLine($"   {lineNo++}:  ! {processNote} ;");
+        }
+
         for (int i = 0; i < exportWaypoints.Count; i++)
         {
             FanucExportPoint wp = exportWaypoints[i];
+            double speed = speedMmPerSec?.Invoke(wp, i) ?? DefaultLsSpeed_mm_s;
+            if (!double.IsFinite(speed) || speed <= 0)
+            {
+                throw new InvalidOperationException($"Point P[{wp.Index}] has no positive feed speed.");
+            }
+
+            string lsSpeed = $"{Format(speed)}mm/sec";
             string motion = i == exportWaypoints.Count - 1 ? "FINE" : "CNT100";
-            sb.AppendLine(
-                $"   {lineNo++}:  ! Width={Format(wp.Width_mm)} Z={Format(wp.Z_mm)} ;");
-            sb.AppendLine(
-                $"   {lineNo++}:L P[{wp.Index}] {lsSpeed} {motion}    ;");
+            string comment = speedMmPerSec == null
+                ? $"! Width={Format(wp.Width_mm)} Z={Format(wp.Z_mm)} ;"
+                : $"! Width={Format(wp.Width_mm)} Z={Format(wp.Z_mm)} Speed={Format(speed)} ;";
+            sb.AppendLine($"   {lineNo++}:  {comment}");
+            sb.AppendLine($"   {lineNo++}:L P[{wp.Index}] {lsSpeed} {motion}    ;");
         }
 
         sb.AppendLine("/POS");
@@ -96,22 +109,34 @@ public static class FanucExporter
     /// <summary>
     /// Writes the same coordinates the export form produced. The LS Y-axis reflection is not applied.
     /// </summary>
-    public static void ExportCsv(IReadOnlyList<FanucExportPoint> waypoints, string filePath)
+    public static void ExportCsv(
+        IReadOnlyList<FanucExportPoint> waypoints,
+        string filePath,
+        Func<FanucExportPoint, int, double>? speedMmPerSec = null)
     {
         IReadOnlyList<FanucExportPoint> exportWaypoints = FilterExportWaypoints(waypoints);
         var sb = new StringBuilder();
-        sb.AppendLine("Index,Role,ExportX_mm,ExportY_mm,Z_mm,ExportR_deg,Width_mm,LocalX_px,LocalY_px,SensorX_px,SensorY_px");
+        string header = speedMmPerSec == null
+            ? "Index,Role,ExportX_mm,ExportY_mm,Z_mm,ExportR_deg,Width_mm,LocalX_px,LocalY_px,SensorX_px,SensorY_px"
+            : "Index,Role,ExportX_mm,ExportY_mm,Z_mm,ExportR_deg,Width_mm,Speed_mm_s,LocalX_px,LocalY_px,SensorX_px,SensorY_px";
+        sb.AppendLine(header);
 
-        foreach (FanucExportPoint wp in exportWaypoints)
+        for (int i = 0; i < exportWaypoints.Count; i++)
         {
+            FanucExportPoint wp = exportWaypoints[i];
             sb.Append(wp.Index).Append(',')
                 .Append(Escape(wp.Role)).Append(',')
                 .Append(Format(wp.ExportX_mm)).Append(',')
                 .Append(Format(wp.ExportY_mm)).Append(',')
                 .Append(Format(wp.Z_mm)).Append(',')
                 .Append(Format(wp.ExportR_deg)).Append(',')
-                .Append(Format(wp.Width_mm)).Append(',')
-                .Append(Format(wp.LocalX_px)).Append(',')
+                .Append(Format(wp.Width_mm)).Append(',');
+            if (speedMmPerSec != null)
+            {
+                sb.Append(Format(speedMmPerSec(wp, i))).Append(',');
+            }
+
+            sb.Append(Format(wp.LocalX_px)).Append(',')
                 .Append(Format(wp.LocalY_px)).Append(',')
                 .Append(Format(wp.SensorX_px)).Append(',')
                 .Append(Format(wp.SensorY_px))

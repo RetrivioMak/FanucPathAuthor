@@ -145,7 +145,7 @@ public sealed class TeachGridSettings
 {
     public static readonly double[] DefaultStepsMm = { 0.1, 0.2, 0.5, 1, 2, 5, 10 };
 
-    /// <summary>Draw the grid. Snapping to points and grid intersections is separate.</summary>
+    /// <summary>Draw the grid and allow snap to land on its intersections.</summary>
     public bool Enabled { get; set; } = true;
     public double Step_mm { get; set; } = 0.2;
     public List<double> Steps_mm { get; set; } = new(DefaultStepsMm);

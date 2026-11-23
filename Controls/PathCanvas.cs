@@ -975,7 +975,7 @@ public sealed class PathCanvas : Control
                     SnapToPointEnabled);
                 sensorX = hit.X;
                 sensorY = hit.Y;
-                if (SnapToPointEnabled)
+                if (SnapToPointEnabled && (hit.SnappedToPoint || GridSnapActive))
                 {
                     _snapHover = (sensorX, sensorY);
                 }
@@ -992,7 +992,7 @@ public sealed class PathCanvas : Control
                     GetSnapExcludePoints(_activeVertexPick));
                 sensorX = resolvedX;
                 sensorY = resolvedY;
-                _snapHover = snappedToPoint || Document.Grid.Step_mm > 0 ? (sensorX, sensorY) : null;
+                _snapHover = snappedToPoint || GridSnapActive ? (sensorX, sensorY) : null;
             }
             else
             {
@@ -1209,14 +1209,16 @@ public sealed class PathCanvas : Control
                     SnapToPointEnabled);
                 sensorX = hit.X;
                 sensorY = hit.Y;
-                _snapHover = SnapToPointEnabled ? (hit.X, hit.Y) : null;
+                _snapHover = SnapToPointEnabled && (hit.SnappedToPoint || GridSnapActive)
+                    ? (hit.X, hit.Y)
+                    : null;
             }
             else if (SnapToPointEnabled && IsDrawTool(ActiveTool))
             {
                 (double resolvedX, double resolvedY, bool snappedToPoint) = ResolveDrawClick(sensorX, sensorY);
                 sensorX = resolvedX;
                 sensorY = resolvedY;
-                _snapHover = snappedToPoint || Document.Grid.Step_mm > 0 ? (resolvedX, resolvedY) : null;
+                _snapHover = snappedToPoint || GridSnapActive ? (resolvedX, resolvedY) : null;
             }
             else if (ActiveTool != DrawTool.Move)
             {
@@ -1537,7 +1539,7 @@ public sealed class PathCanvas : Control
                 imagePoint.X,
                 imagePoint.Y,
                 GetSnapExcludePoints(_activeVertexPick));
-            if (snappedToPoint || Document.Grid.Step_mm > 0)
+            if (snappedToPoint || GridSnapActive)
             {
                 (double localX, double localY) = CoordinateTransform.SensorToLocal(
                     sensorX,
@@ -1629,11 +1631,13 @@ public sealed class PathCanvas : Control
         return (sensorX, sensorY, false);
     }
 
+    private bool GridSnapActive => Document.Grid.Enabled && Document.Grid.Step_mm > 0;
+
     private bool TrySnapToGrid(double sensorX, double sensorY, out double x, out double y)
     {
         x = sensorX;
         y = sensorY;
-        if (Document.Grid.Step_mm <= 0)
+        if (!GridSnapActive)
         {
             return false;
         }
@@ -1702,7 +1706,7 @@ public sealed class PathCanvas : Control
         }
 
         (double snapX, double snapY, bool snappedToPoint) = ResolveSnapPosition(sensorX, sensorY);
-        if (snappedToPoint || Document.Grid.Step_mm > 0)
+        if (snappedToPoint || GridSnapActive)
         {
             return (snapX, snapY, snappedToPoint);
         }

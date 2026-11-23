@@ -22,6 +22,7 @@
     <ProjectReference Include="..\DispensePathAuthor.Export.Xyz\DispensePathAuthor.Export.Xyz.csproj" />
     <ProjectReference Include="..\DispensePathAuthor.Import.Dxf\DispensePathAuthor.Import.Dxf.csproj" />
     <ProjectReference Include="..\DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Export.FanucFeed\DispensePathAuthor.Export.FanucFeed.csproj" />
   </ItemGroup>
 
   <ItemGroup>

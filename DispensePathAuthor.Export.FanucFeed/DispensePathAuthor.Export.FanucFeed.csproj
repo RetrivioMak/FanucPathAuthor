@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DispensePathAuthor.Export.FanucFeed</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DispensePathAuthor.Contracts\DispensePathAuthor.Contracts.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="FanucFeedDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="FanucFeedDialog.Designer.cs">
+      <DependentUpon>FanucFeedDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="FanucFeedDialog.resx">
+      <DependentUpon>FanucFeedDialog.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

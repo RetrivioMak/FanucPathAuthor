@@ -11,7 +11,7 @@ public sealed class XyzExporter : IProgramExporter
 
     public string Id => ExporterId;
 
-    public string MenuLabel => "Export XYZ...";
+    public string MenuLabel => "PU2 ZYX";
 
     public string SettingsTitle => "XYZ";
 

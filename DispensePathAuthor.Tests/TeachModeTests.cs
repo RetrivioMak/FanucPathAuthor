@@ -192,6 +192,39 @@ public class TeachModeTests : IDisposable
     }
 
     [Fact]
+    public void Pointer_HiddenGrid_KeepsCursor_AndStillSnapsToPoint()
+    {
+        var grid = new TeachGridSettings { Enabled = false, Step_mm = 1, OriginX_mm = 0, OriginY_mm = 0 };
+        Func<double, double, PointF> toScreen = static (px, py) => new PointF((float)px, (float)py);
+
+        (double x, double y, bool snappedToPoint) = TeachPointer.Resolve(
+            1.4,
+            0.2,
+            new[] { (0d, 0d) },
+            grid,
+            toScreen,
+            pickRadiusScreenPx: 1,
+            snapEnabled: true);
+
+        Assert.False(snappedToPoint);
+        Assert.Equal(1.4, x, 6);
+        Assert.Equal(0.2, y, 6);
+
+        (double pointX, double pointY, bool onPoint) = TeachPointer.Resolve(
+            0.4,
+            0.1,
+            new[] { (0d, 0d) },
+            grid,
+            toScreen,
+            pickRadiusScreenPx: 1,
+            snapEnabled: true);
+
+        Assert.True(onPoint);
+        Assert.Equal(0, pointX, 6);
+        Assert.Equal(0, pointY, 6);
+    }
+
+    [Fact]
     public void Pointer_SnapOff_KeepsCursor()
     {
         var grid = new TeachGridSettings { Enabled = true, Step_mm = 1, OriginX_mm = 0, OriginY_mm = 0 };

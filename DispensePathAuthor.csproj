@@ -26,6 +26,7 @@
     <Compile Remove="DispensePathAuthor.Contracts\**" />
     <Compile Remove="DispensePathAuthor.Export.Xyz\**" />
     <Compile Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <Compile Remove="DispensePathAuthor.Export.FanucFeed\**" />
     <Compile Remove="DispensePathAuthor.Import.Dxf\**" />
     <Compile Remove="DispensePathAuthor.Xyz\**" />
     <Compile Remove="DispensePathAuthor.Dxf\**" />
@@ -35,6 +36,7 @@
     <EmbeddedResource Remove="DispensePathAuthor.Contracts\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Export.Xyz\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Export.FanucFeed\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Import.Dxf\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Xyz\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Dxf\**" />
@@ -42,6 +44,7 @@
     <None Remove="DispensePathAuthor.Contracts\**" />
     <None Remove="DispensePathAuthor.Export.Xyz\**" />
     <None Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <None Remove="DispensePathAuthor.Export.FanucFeed\**" />
     <None Remove="DispensePathAuthor.Import.Dxf\**" />
     <None Remove="DispensePathAuthor.Xyz\**" />
     <None Remove="DispensePathAuthor.Dxf\**" />
@@ -49,6 +52,7 @@
     <Content Remove="DispensePathAuthor.Contracts\**" />
     <Content Remove="DispensePathAuthor.Export.Xyz\**" />
     <Content Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <Content Remove="DispensePathAuthor.Export.FanucFeed\**" />
     <Content Remove="DispensePathAuthor.Import.Dxf\**" />
     <Content Remove="DispensePathAuthor.Xyz\**" />
     <Content Remove="DispensePathAuthor.Dxf\**" />
@@ -62,6 +66,11 @@
       <Private>false</Private>
     </ProjectReference>
     <ProjectReference Include="DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>PluginAssembly</OutputItemType>
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="DispensePathAuthor.Export.FanucFeed\DispensePathAuthor.Export.FanucFeed.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <OutputItemType>PluginAssembly</OutputItemType>
       <Private>false</Private>

@@ -31,6 +31,11 @@ public static class TeachPointer
             return (snapX, snapY, true);
         }
 
+        if (!grid.Enabled || grid.Step_mm <= 0)
+        {
+            return (x, y, false);
+        }
+
         (double gridX, double gridY) = TeachGridSnap.Snap(x, y, grid);
         return (gridX, gridY, false);
     }
