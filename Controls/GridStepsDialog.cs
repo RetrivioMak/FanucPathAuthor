@@ -10,6 +10,7 @@ public sealed partial class GridStepsDialog : Form
     public GridStepsDialog(IReadOnlyList<double> steps, double activeStep)
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         _steps = GridSteps.NormalizeList(steps, activeStep, out double current);
         _activeIndex = IndexOf(current);
         if (_activeIndex < 0)

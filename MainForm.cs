@@ -82,6 +82,7 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         Text = AppVersion.WindowTitle;
         _canvasHost.Controls.Add(_canvas);
         _paletteHost.Controls.Add(_toolPalette);

@@ -14,6 +14,7 @@ public sealed partial class ProjectSettingsDialog : Form
     public ProjectSettingsDialog(ProcessDefaults current, bool showReferenceScale)
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         _source = current;
         _showReference = showReferenceScale;
         Settings = ProcessDefaultsCopy.Clone(current);

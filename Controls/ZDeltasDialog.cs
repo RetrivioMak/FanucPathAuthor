@@ -9,6 +9,7 @@ public sealed partial class ZDeltasDialog : Form
     public ZDeltasDialog(IReadOnlyList<double> offsets)
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         _offsets = ZOffsets.StoredList(offsets);
         _caption.Text = "Offset added to project Z. 0 keeps the project value.";
 

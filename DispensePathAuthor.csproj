@@ -10,14 +10,15 @@
     <RootNamespace>DispensePathAuthor</RootNamespace>
     <AssemblyName>DispensePathAuthor</AssemblyName>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.4</Version>
-    <AssemblyVersion>1.0.4.0</AssemblyVersion>
-    <FileVersion>1.0.4.0</FileVersion>
-    <InformationalVersion>1.0.4 Alpha</InformationalVersion>
+    <Version>1.0.5</Version>
+    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <FileVersion>1.0.5.0</FileVersion>
+    <InformationalVersion>1.0.5 Alpha</InformationalVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>true</GenerateTargetFrameworkAttribute>
+    <ApplicationIcon>AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- SDK includes all *.cs recursively; keep the test project and plugin projects out of the WinExe build. -->
@@ -56,6 +57,11 @@
     <Content Remove="DispensePathAuthor.Import.Dxf\**" />
     <Content Remove="DispensePathAuthor.Xyz\**" />
     <Content Remove="DispensePathAuthor.Dxf\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="AppIcon.ico" />
+    <EmbeddedResource Include="AppIcon.ico" LogicalName="DispensePathAuthor.AppIcon.ico" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,6 +19,7 @@ public partial class TeachPointImportDialog : Form
         _existingNames = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
         _usedNames = new HashSet<string>(_existingNames, StringComparer.OrdinalIgnoreCase);
         InitializeComponent();
+        Icon = AppIcon.Load();
         EnsurePreviewColumns();
         _unit.SelectedIndex = 1;
         _csvButton.Click += (_, _) => LoadCsv();

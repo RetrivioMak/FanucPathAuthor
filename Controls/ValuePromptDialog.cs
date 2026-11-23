@@ -5,6 +5,7 @@ public sealed partial class ValuePromptDialog : Form
     public ValuePromptDialog()
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
     }
 
     public string Caption

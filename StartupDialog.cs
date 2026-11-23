@@ -18,6 +18,7 @@ public partial class StartupDialog : Form
     public StartupDialog()
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         Text = AppVersion.ProductName;
         _cvImage = CreateCvIcon();
         _teachImage = CreateTeachIcon();

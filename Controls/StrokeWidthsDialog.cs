@@ -10,6 +10,7 @@ public sealed partial class StrokeWidthsDialog : Form
     public StrokeWidthsDialog(IReadOnlyList<double> widths, double minimum)
     {
         InitializeComponent();
+        Icon = AppIcon.Load();
         _floor = StrokeWidths.Floor(minimum);
         _widths = StrokeWidths.StoredList(widths, _floor);
         _caption.Text = $"Minimum: {StrokeWidths.Format(_floor)} mm";
