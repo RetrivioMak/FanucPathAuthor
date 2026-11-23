@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using DispensePathAuthor.Contracts;
 
-namespace DispensePathAuthor.Xyz;
+namespace DispensePathAuthor.Export.Xyz;
 
 public sealed class XyzExporter : IProgramExporter
 {
@@ -57,10 +57,10 @@ public sealed class XyzExporter : IProgramExporter
         {
             foreach ((double x, double y) in Sample(move, settings.ChordTolerance_mm))
             {
-                int valve = move.Dispense ? settings.ValveOutput : 0;
+                int valve = move.Width_mm > 0 ? settings.ValveOutput : 0;
                 output.AppendLine(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"MOVE X{x:0.000} Y{y:0.000} Z{settings.Z_mm:0.000} F{move.SpeedMmPerS:0.000} V{valve}"));
+                    $"MOVE X{x:0.000} Y{y:0.000} Z{move.Z_mm:0.000} W{move.Width_mm:0.000} V{valve}"));
             }
         }
 

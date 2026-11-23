@@ -4,7 +4,7 @@ namespace DispensePathAuthor.Services;
 
 public static class ExporterRegistry
 {
-    private static readonly List<IProgramExporter> Registered = [new FanucLsExporter()];
+    private static readonly List<IProgramExporter> Registered = [];
     private static bool _pluginsLoaded;
 
     public static IReadOnlyList<IProgramExporter> Exporters => Registered;
@@ -17,7 +17,7 @@ public static class ExporterRegistry
         }
 
         _pluginsLoaded = true;
-        string folder = Path.Combine(AppContext.BaseDirectory, "plugins");
+        string folder = Path.Combine(AppContext.BaseDirectory, "plugins", "export");
         return PluginLoader.Load(folder, new Catalog(Registered));
     }
 

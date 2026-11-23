@@ -6,13 +6,46 @@ namespace DispensePathAuthor.Services;
 
 public static class PluginLoader
 {
-    public static IReadOnlyList<string> Load(string folder, IExporterCatalog catalog)
+    private static readonly object Gate = new();
+    private static readonly List<string> ProbeDirectories = new();
+    private static bool _resolverReady;
+
+    public static IReadOnlyList<string> Load(string folder, IExporterCatalog catalog) =>
+        LoadFolder(folder, type =>
+        {
+            if (type.IsAbstract || !typeof(IPluginEntry).IsAssignableFrom(type))
+            {
+                return;
+            }
+
+            if (Activator.CreateInstance(type) is IPluginEntry entry)
+            {
+                entry.Register(catalog);
+            }
+        });
+
+    public static IReadOnlyList<string> LoadImporters(string folder, IImporterCatalog catalog) =>
+        LoadFolder(folder, type =>
+        {
+            if (type.IsAbstract || !typeof(IImportPluginEntry).IsAssignableFrom(type))
+            {
+                return;
+            }
+
+            if (Activator.CreateInstance(type) is IImportPluginEntry entry)
+            {
+                entry.Register(catalog);
+            }
+        });
+
+    private static IReadOnlyList<string> LoadFolder(string folder, Action<Type> visit)
     {
         if (!Directory.Exists(folder))
         {
             return [];
         }
 
+        EnsureResolver(folder);
         var notes = new List<string>();
         foreach (string file in Directory.GetFiles(folder, "*.dll").OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
@@ -25,21 +58,16 @@ public static class PluginLoader
 
             try
             {
-                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(file));
+                Assembly assembly = LoadAssembly(file);
                 foreach (Type type in assembly.GetExportedTypes())
                 {
-                    if (type.IsAbstract || !typeof(IPluginEntry).IsAssignableFrom(type))
-                    {
-                        continue;
-                    }
-
-                    if (Activator.CreateInstance(type) is not IPluginEntry entry)
-                    {
-                        continue;
-                    }
-
-                    entry.Register(catalog);
+                    visit(type);
                 }
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                string detail = ex.LoaderExceptions.FirstOrDefault(static error => error != null)?.Message ?? ex.Message;
+                notes.Add($"{name}: {detail}");
             }
             catch (Exception ex)
             {
@@ -48,5 +76,77 @@ public static class PluginLoader
         }
 
         return notes;
+    }
+
+    private static Assembly LoadAssembly(string file)
+    {
+        AssemblyName assemblyName = AssemblyName.GetAssemblyName(file);
+        Assembly? loaded = FindLoaded(assemblyName);
+        if (loaded != null)
+        {
+            return loaded;
+        }
+
+        return AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(file));
+    }
+
+    private static Assembly? FindLoaded(AssemblyName name)
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (string.Equals(assembly.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return assembly;
+            }
+        }
+
+        return null;
+    }
+
+    private static void EnsureResolver(string folder)
+    {
+        string full = Path.GetFullPath(folder);
+        lock (Gate)
+        {
+            if (!ProbeDirectories.Contains(full, StringComparer.OrdinalIgnoreCase))
+            {
+                ProbeDirectories.Add(full);
+            }
+
+            if (_resolverReady)
+            {
+                return;
+            }
+
+            AssemblyLoadContext.Default.Resolving += ResolveFromProbe;
+            _resolverReady = true;
+        }
+    }
+
+    private static Assembly? ResolveFromProbe(AssemblyLoadContext context, AssemblyName name)
+    {
+        if (string.IsNullOrEmpty(name.Name))
+        {
+            return null;
+        }
+
+        string[] directories;
+        lock (Gate)
+        {
+            directories = ProbeDirectories.ToArray();
+        }
+
+        foreach (string directory in directories)
+        {
+            string candidate = Path.Combine(directory, name.Name + ".dll");
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            return context.LoadFromAssemblyPath(Path.GetFullPath(candidate));
+        }
+
+        return null;
     }
 }

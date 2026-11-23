@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.Text.Json;
+using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Controls;
+using DispensePathAuthor.Export.Fanuc;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 using Xunit;
@@ -256,8 +258,17 @@ public class TeachModeTests : IDisposable
 
         string path = Path.Combine(_directory, "GLUE.LS");
         FanucExporter.ExportLs(
-            GeometryHelper.BuildWaypoints(document, calibration: null),
-            calibration: null,
+            GeometryHelper.BuildWaypoints(document, calibration: null).Select(static waypoint => new FanucExportPoint
+            {
+                Index = waypoint.Index,
+                LocalX_px = waypoint.LocalX_px,
+                LocalY_px = waypoint.LocalY_px,
+                ExportX_mm = waypoint.ExportX_mm,
+                ExportY_mm = waypoint.ExportY_mm,
+                ExportR_deg = waypoint.ExportR_deg,
+                Z_mm = waypoint.Z_mm,
+                IsPreviewOnly = waypoint.IsPreviewOnly
+            }).ToList(),
             "GLUE",
             path,
             applyFrameYReflection: false);

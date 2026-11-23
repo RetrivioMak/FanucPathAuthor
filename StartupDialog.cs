@@ -2,15 +2,6 @@ using System.Drawing.Drawing2D;
 
 namespace DispensePathAuthor;
 
-public enum StartupAction
-{
-    NewCv,
-    NewTeach,
-    Open
-}
-
-public readonly record struct ProjectStart(StartupAction Action, string? FilePath);
-
 public partial class StartupDialog : Form
 {
     private static readonly Color HoverColor = Color.FromArgb(232, 240, 254);
@@ -195,3 +186,12 @@ public partial class StartupDialog : Form
         return bitmap;
     }
 }
+
+public enum StartupAction
+{
+    NewCv,
+    NewTeach,
+    Open
+}
+
+public readonly record struct ProjectStart(StartupAction Action, string? FilePath);

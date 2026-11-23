@@ -134,6 +134,8 @@ public static class GeometryHelper
                     RobotX_mm = exportX,
                     RobotY_mm = exportY,
                     R_deg = exportR,
+                    Z_mm = ZOffsets.ExportZ(document.Defaults, segment),
+                    Width_mm = StrokeWidths.ExportWidth(segment, document.Defaults.MinWidth_mm),
                     GlueOn = segment.GlueOn
                 });
             }
@@ -179,10 +181,10 @@ public static class GeometryHelper
                     RobotX_mm = values.ExportX_mm,
                     RobotY_mm = values.ExportY_mm,
                     R_deg = values.ExportR_deg,
-                    Z_mm = document.Defaults.Z_mm,
+                    Z_mm = ZOffsets.ExportZ(document.Defaults, segment),
+                    Width_mm = StrokeWidths.ExportWidth(segment, document.Defaults.MinWidth_mm),
                     W_deg = document.Defaults.W_deg,
                     P_deg = document.Defaults.P_deg,
-                    Speed_mm_s = segment.Speed_mm_s,
                     GlueOn = segment.GlueOn
                 });
             }
@@ -257,6 +259,7 @@ public static class GeometryHelper
             RobotX_mm = exportX,
             RobotY_mm = exportY,
             R_deg = exportR,
+            Z_mm = document.Defaults.Z_mm,
             GlueOn = false,
             IsPreviewOnly = true
         };

@@ -10,7 +10,7 @@ public static class DiagnosticCsv
     {
         IReadOnlyList<RobotWaypoint> exportWaypoints = waypoints.Where(static wp => !wp.IsPreviewOnly).ToList();
         var sb = new StringBuilder();
-        sb.AppendLine("Index,Role,ExportX_mm,ExportY_mm,ExportR_deg,GlueOn,LocalX_px,LocalY_px,SensorX_px,SensorY_px");
+        sb.AppendLine("Index,Role,ExportX_mm,ExportY_mm,ExportR_deg,Width_mm,LocalX_px,LocalY_px,SensorX_px,SensorY_px");
 
         foreach (RobotWaypoint wp in exportWaypoints)
         {
@@ -19,7 +19,7 @@ public static class DiagnosticCsv
                 .Append(Format(wp.ExportX_mm)).Append(',')
                 .Append(Format(wp.ExportY_mm)).Append(',')
                 .Append(Format(wp.ExportR_deg)).Append(',')
-                .Append(wp.GlueOn ? "1" : "0").Append(',')
+                .Append(Format(wp.Width_mm)).Append(',')
                 .Append(Format(wp.LocalX_px)).Append(',')
                 .Append(Format(wp.LocalY_px)).Append(',')
                 .Append(Format(wp.SensorX_px)).Append(',')

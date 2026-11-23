@@ -24,38 +24,150 @@
   <ItemGroup>
     <Compile Remove="DispensePathAuthor.Tests\**" />
     <Compile Remove="DispensePathAuthor.Contracts\**" />
+    <Compile Remove="DispensePathAuthor.Export.Xyz\**" />
+    <Compile Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <Compile Remove="DispensePathAuthor.Import.Dxf\**" />
     <Compile Remove="DispensePathAuthor.Xyz\**" />
+    <Compile Remove="DispensePathAuthor.Dxf\**" />
+    <Compile Remove="obj\**" />
+    <Compile Remove="bin\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Tests\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Contracts\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Export.Xyz\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Import.Dxf\**" />
     <EmbeddedResource Remove="DispensePathAuthor.Xyz\**" />
+    <EmbeddedResource Remove="DispensePathAuthor.Dxf\**" />
     <None Remove="DispensePathAuthor.Tests\**" />
     <None Remove="DispensePathAuthor.Contracts\**" />
+    <None Remove="DispensePathAuthor.Export.Xyz\**" />
+    <None Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <None Remove="DispensePathAuthor.Import.Dxf\**" />
     <None Remove="DispensePathAuthor.Xyz\**" />
+    <None Remove="DispensePathAuthor.Dxf\**" />
     <Content Remove="DispensePathAuthor.Tests\**" />
     <Content Remove="DispensePathAuthor.Contracts\**" />
+    <Content Remove="DispensePathAuthor.Export.Xyz\**" />
+    <Content Remove="DispensePathAuthor.Export.Fanuc\**" />
+    <Content Remove="DispensePathAuthor.Import.Dxf\**" />
     <Content Remove="DispensePathAuthor.Xyz\**" />
+    <Content Remove="DispensePathAuthor.Dxf\**" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="DispensePathAuthor.Contracts\DispensePathAuthor.Contracts.csproj" />
-    <ProjectReference Include="DispensePathAuthor.Xyz\DispensePathAuthor.Xyz.csproj">
+    <ProjectReference Include="DispensePathAuthor.Export.Xyz\DispensePathAuthor.Export.Xyz.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <OutputItemType>PluginAssembly</OutputItemType>
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>PluginAssembly</OutputItemType>
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="DispensePathAuthor.Import.Dxf\DispensePathAuthor.Import.Dxf.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>ImportPluginAssembly</OutputItemType>
       <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
 
   <Target Name="CopyPlugins" AfterTargets="Build">
-    <Copy SourceFiles="@(PluginAssembly)" DestinationFolder="$(TargetDir)plugins" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PluginAssembly)" DestinationFolder="$(TargetDir)plugins\export" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ImportPluginAssembly)" DestinationFolder="$(TargetDir)plugins\import" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <ImportPluginDependency Include="@(ImportPluginAssembly->'%(RootDir)%(Directory)netDxf.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ImportPluginDependency)" DestinationFolder="$(TargetDir)plugins\import" SkipUnchangedFiles="true" />
   </Target>
-
-  <!-- DXF types are used only by Services/DxfImporter.cs. -->
-  <ItemGroup>
-    <PackageReference Include="netDxf" Version="2023.11.10" />
-  </ItemGroup>
 
   <!-- Legacy VS template file, if present, conflicts with SDK-generated assembly info. -->
   <ItemGroup>
     <Compile Remove="Properties\AssemblyInfo.cs" Condition="Exists('Properties\AssemblyInfo.cs')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="MainForm.Designer.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="MainForm.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="StartupDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="StartupDialog.Designer.cs">
+      <DependentUpon>StartupDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="StartupDialog.resx">
+      <DependentUpon>StartupDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="TeachPointImportDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="TeachPointImportDialog.Designer.cs">
+      <DependentUpon>TeachPointImportDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="TeachPointImportDialog.resx">
+      <DependentUpon>TeachPointImportDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="ProjectSettingsDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="ProjectSettingsDialog.Designer.cs">
+      <DependentUpon>ProjectSettingsDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="ProjectSettingsDialog.resx">
+      <DependentUpon>ProjectSettingsDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Controls\GridStepsDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Controls\GridStepsDialog.Designer.cs">
+      <DependentUpon>GridStepsDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Controls\GridStepsDialog.resx">
+      <DependentUpon>GridStepsDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Controls\StrokeWidthsDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Controls\StrokeWidthsDialog.Designer.cs">
+      <DependentUpon>StrokeWidthsDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Controls\StrokeWidthsDialog.resx">
+      <DependentUpon>StrokeWidthsDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Controls\ZDeltasDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Controls\ZDeltasDialog.Designer.cs">
+      <DependentUpon>ZDeltasDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Controls\ZDeltasDialog.resx">
+      <DependentUpon>ZDeltasDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Controls\ValuePromptDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Controls\ValuePromptDialog.Designer.cs">
+      <DependentUpon>ValuePromptDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Controls\ValuePromptDialog.resx">
+      <DependentUpon>ValuePromptDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <Compile Update="Controls\SegmentListPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Controls\SegmentListPanel.Designer.cs">
+      <DependentUpon>SegmentListPanel.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Controls\SegmentListPanel.resx">
+      <DependentUpon>SegmentListPanel.cs</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

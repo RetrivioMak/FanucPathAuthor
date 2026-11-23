@@ -1,3 +1,5 @@
+using DispensePathAuthor.Contracts;
+using DispensePathAuthor.Import.Dxf;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 using Xunit;
@@ -99,14 +101,12 @@ public class CvFrameMillimeterTests
                 Unit = DrawingLengthUnit.Millimeter,
                 OriginX_mm = 0,
                 OriginY_mm = 0
-            },
-            glueOn: true,
-            speedMmPerS: 40);
+            });
 
         var cv = new PathDocument { Workspace = WorkspaceKind.Cv, SchemaVersion = FrameMillimeters.SchemaVersion };
         var teach = new PathDocument { Workspace = WorkspaceKind.Teach, SchemaVersion = FrameMillimeters.SchemaVersion };
-        cv.Segments.AddRange(result.Segments.Select(DocumentClone.CloneSegment));
-        teach.Segments.AddRange(result.Segments.Select(DocumentClone.CloneSegment));
+        cv.Segments.AddRange(result.Segments.Select(ToPath).Select(DocumentClone.CloneSegment));
+        teach.Segments.AddRange(result.Segments.Select(ToPath).Select(DocumentClone.CloneSegment));
 
         Assert.Equal(teach.Segments.Count, cv.Segments.Count);
         Assert.True(cv.Segments.Count > 0);
@@ -121,6 +121,24 @@ public class CvFrameMillimeterTests
             Assert.Equal(teach.Segments[i].Y3, cv.Segments[i].Y3, 6);
         }
     }
+
+    private static PathSegment ToPath(ImportedSegment segment) =>
+        new()
+        {
+            Kind = segment.Kind switch
+            {
+                ImportedSegmentKind.Dot => SegmentKind.Dot,
+                ImportedSegmentKind.Line => SegmentKind.Line,
+                ImportedSegmentKind.Arc => SegmentKind.Arc,
+                _ => throw new ArgumentOutOfRangeException(nameof(segment))
+            },
+            X1 = segment.X1,
+            Y1 = segment.Y1,
+            X2 = segment.X2,
+            Y2 = segment.Y2,
+            X3 = segment.X3,
+            Y3 = segment.Y3
+        };
 
     private static RobotCalibrationFile Calibration() =>
         new()

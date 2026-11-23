@@ -118,7 +118,7 @@ public sealed class CvCanvasSpace : CanvasSpace
     public override double FrameAxisLength(float zoom) => 80;
 
     public override string FormatCursor(double sensorX, double sensorY, double localX, double localY) =>
-        $"sensor ({sensorX:F0},{sensorY:F0})  local ({localX:F0},{localY:F0})";
+        $"sensor ({sensorX:F0}, {sensorY:F0}) px  local ({localX:F0}, {localY:F0}) px";
 }
 
 public sealed class TeachCanvasSpace : CanvasSpace

@@ -1,6 +1,6 @@
 #nullable enable
 
-namespace DispensePathAuthor.Xyz;
+namespace DispensePathAuthor.Export.Xyz;
 
 partial class XyzSettingsPanel
 {

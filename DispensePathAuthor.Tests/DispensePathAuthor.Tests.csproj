@@ -19,7 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DispensePathAuthor.csproj" />
-    <ProjectReference Include="..\DispensePathAuthor.Xyz\DispensePathAuthor.Xyz.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Export.Xyz\DispensePathAuthor.Export.Xyz.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Import.Dxf\DispensePathAuthor.Import.Dxf.csproj" />
+    <ProjectReference Include="..\DispensePathAuthor.Export.Fanuc\DispensePathAuthor.Export.Fanuc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

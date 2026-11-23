@@ -1,6 +1,6 @@
 using DispensePathAuthor.Contracts;
 
-namespace DispensePathAuthor.Xyz;
+namespace DispensePathAuthor.Export.Xyz;
 
 public sealed class XyzPlugin : IPluginEntry
 {

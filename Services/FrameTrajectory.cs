@@ -57,8 +57,8 @@ public static class FrameTrajectory
                 Y2 = y2,
                 X3 = x3,
                 Y3 = y3,
-                Dispense = segment.GlueOn,
-                SpeedMmPerS = segment.Speed_mm_s
+                Width_mm = StrokeWidths.ExportWidth(segment, document.Defaults.MinWidth_mm),
+                Z_mm = ZOffsets.ExportZ(document.Defaults, segment)
             });
         }
 

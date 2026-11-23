@@ -1,7 +1,7 @@
 #nullable enable
-namespace DispensePathAuthor;
+namespace DispensePathAuthor.Export.Fanuc;
 
-partial class ExportSettingsDialog
+partial class FanucExportDialog
 {
     private System.ComponentModel.IContainer? components;
 

@@ -153,11 +153,9 @@ public sealed class PathSimulationTimeline
 public static class PathSimulationService
 {
     /// <summary>
-    /// Visual playback speed in px/s at the default process speed (50 mm/s).
-    /// Robot mm/s values are scaled relative to this for preview only.
+    /// Visual playback speed in px/s. Process feed is not authored; the playback slider scales this.
     /// </summary>
     public const double SimulationBaseSpeed_px_s = 1200;
-    public const double DefaultReferenceSpeed_mm_s = 50;
     public const double TravelSpeedFactor = 2.5;
     private const double MinSimulationSpeed_px_s = 200;
     private const double MinPointSpacing_px = 4;
@@ -177,14 +175,14 @@ public static class PathSimulationService
         {
             if (i > 0)
             {
-                SimulationMove? gapMove = CreateGapMove(segments, i - 1, i, document);
+                SimulationMove? gapMove = CreateGapMove(segments, i - 1, i);
                 if (gapMove != null)
                 {
                     moves.Add(gapMove);
                 }
             }
 
-            moves.Add(CreateSegmentMove(segments[i], i, document));
+            moves.Add(CreateSegmentMove(segments[i], i));
         }
 
         double totalDuration = moves.Sum(move => move.Duration_s);
@@ -198,8 +196,7 @@ public static class PathSimulationService
     private static SimulationMove? CreateGapMove(
         IReadOnlyList<PathSegment> segments,
         int fromIndex,
-        int toIndex,
-        PathDocument document)
+        int toIndex)
     {
         (double fromX, double fromY) = PathSequenceService.GetEndPoint(segments[fromIndex]);
         (double toX, double toY) = PathSequenceService.GetStartPoint(segments[toIndex]);
@@ -220,15 +217,15 @@ public static class PathSimulationService
             Kind = SimulationMoveKind.GapJump,
             GlueOn = false,
             SegmentIndex = toIndex,
-            Speed_px_s = ResolveTravelSpeed(document),
+            Speed_px_s = ResolveTravelSpeed(),
             Points = points,
             Length_px = length
         };
     }
 
-    private static SimulationMove CreateSegmentMove(PathSegment segment, int segmentIndex, PathDocument document)
+    private static SimulationMove CreateSegmentMove(PathSegment segment, int segmentIndex)
     {
-        double speed = ResolveSegmentSpeed(segment, document);
+        double speed = SimulationBaseSpeed_px_s;
         IReadOnlyList<(double X, double Y)> points = segment.Kind switch
         {
             SegmentKind.Dot => new[] { (segment.X1, segment.Y1) },
@@ -261,17 +258,7 @@ public static class PathSimulationService
         };
     }
 
-    private static double ResolveSegmentSpeed(PathSegment segment, PathDocument document)
-    {
-        double robotSpeed = segment.Speed_mm_s > 0 ? segment.Speed_mm_s : document.Defaults.Speed_mm_s;
-        double referenceSpeed = document.Defaults.Speed_mm_s > 0
-            ? document.Defaults.Speed_mm_s
-            : DefaultReferenceSpeed_mm_s;
-        double px_s = SimulationBaseSpeed_px_s * (robotSpeed / referenceSpeed);
-        return Math.Max(px_s, MinSimulationSpeed_px_s);
-    }
-
-    private static double ResolveTravelSpeed(PathDocument document) =>
+    private static double ResolveTravelSpeed() =>
         Math.Max(SimulationBaseSpeed_px_s * TravelSpeedFactor, MinSimulationSpeed_px_s * TravelSpeedFactor);
 
     public static IReadOnlyList<(double X, double Y)> SampleArc(PathSegment segment)

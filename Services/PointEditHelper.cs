@@ -281,8 +281,7 @@ public static class PointEditHelper
             pick.CircleCenterY,
             radiusPointX,
             radiusPointY,
-            template.GlueOn,
-            template.Speed_mm_s);
+            template.GlueOn);
 
         if (arcs.Count != 2)
         {

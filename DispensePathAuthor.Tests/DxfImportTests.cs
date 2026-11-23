@@ -1,3 +1,5 @@
+using DispensePathAuthor.Contracts;
+using DispensePathAuthor.Import.Dxf;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 using Xunit;
@@ -39,8 +41,8 @@ public class DxfImportTests : IDisposable
     [Fact]
     public void QuarterArc_KeepsTheMidpointOnTheArc()
     {
-        PathSegment arc = DxfCurve.Arc(0, 0, 10, 0, 90, glueOn: true, speedMmPerS: 40)!;
-        Assert.Equal(SegmentKind.Arc, arc.Kind);
+        ImportedSegment arc = DxfCurve.Arc(0, 0, 10, 0, 90)!;
+        Assert.Equal(ImportedSegmentKind.Arc, arc.Kind);
         Assert.Equal(10, arc.X1, 6);
         Assert.Equal(0, arc.Y1, 6);
         Assert.Equal(5 * Math.Sqrt(2), arc.X2, 6);
@@ -53,10 +55,6 @@ public class DxfImportTests : IDisposable
     public void Import_LinesAndArcs_BecomeTeachSegmentsInPackage()
     {
         var importer = new DxfImporter();
-        Assert.Null(importer.UnavailableReason(WorkspaceKind.Teach));
-        Assert.Null(importer.UnavailableReason(WorkspaceKind.Cv));
-        Assert.NotNull(importer.UnavailableReason(WorkspaceKind.Unset));
-
         GeometryImportSurvey survey = importer.Survey(Fixture);
         Assert.Equal(["0", "Notes", "Path", "SkipMe"], survey.Layers);
         Assert.Equal(DrawingLengthUnit.Millimeter, survey.SuggestedUnit);
@@ -70,22 +68,19 @@ public class DxfImportTests : IDisposable
                 Unit = DrawingLengthUnit.Millimeter,
                 OriginX_mm = 0,
                 OriginY_mm = 0
-            },
-            glueOn: true,
-            speedMmPerS: 40);
+            });
 
         Assert.Equal(8, result.Segments.Count);
-        Assert.All(result.Segments, segment => Assert.Equal(40, segment.Speed_mm_s));
 
-        PathSegment line = result.Segments[0];
-        Assert.Equal(SegmentKind.Line, line.Kind);
+        ImportedSegment line = result.Segments[0];
+        Assert.Equal(ImportedSegmentKind.Line, line.Kind);
         Assert.Equal(0, line.X1, 6);
         Assert.Equal(0, line.Y1, 6);
         Assert.Equal(10, line.X2, 6);
         Assert.Equal(0, line.Y2, 6);
 
-        PathSegment arc = result.Segments[1];
-        Assert.Equal(SegmentKind.Arc, arc.Kind);
+        ImportedSegment arc = result.Segments[1];
+        Assert.Equal(ImportedSegmentKind.Arc, arc.Kind);
         Assert.Equal(10, arc.X1, 6);
         Assert.Equal(0, arc.Y1, 6);
         Assert.Equal(5 * Math.Sqrt(2), arc.X2, 6);
@@ -93,7 +88,7 @@ public class DxfImportTests : IDisposable
         Assert.Equal(0, arc.X3, 6);
         Assert.Equal(10, arc.Y3, 6);
 
-        PathSegment upper = result.Segments[2];
+        ImportedSegment upper = result.Segments[2];
         Assert.Equal(7, upper.X1, 6);
         Assert.Equal(5, upper.Y1, 6);
         Assert.Equal(5, upper.X2, 6);
@@ -101,7 +96,7 @@ public class DxfImportTests : IDisposable
         Assert.Equal(3, upper.X3, 6);
         Assert.Equal(5, upper.Y3, 6);
 
-        PathSegment lower = result.Segments[3];
+        ImportedSegment lower = result.Segments[3];
         Assert.Equal(3, lower.X1, 6);
         Assert.Equal(5, lower.Y1, 6);
         Assert.Equal(5, lower.X2, 6);
@@ -109,16 +104,16 @@ public class DxfImportTests : IDisposable
         Assert.Equal(7, lower.X3, 6);
         Assert.Equal(5, lower.Y3, 6);
 
-        Assert.Equal(SegmentKind.Dot, result.Segments[4].Kind);
+        Assert.Equal(ImportedSegmentKind.Dot, result.Segments[4].Kind);
         Assert.Equal(1, result.Segments[4].X1, 6);
         Assert.Equal(2, result.Segments[4].Y1, 6);
 
-        Assert.Equal(SegmentKind.Line, result.Segments[5].Kind);
+        Assert.Equal(ImportedSegmentKind.Line, result.Segments[5].Kind);
         Assert.Equal(0, result.Segments[5].X1, 6);
         Assert.Equal(10, result.Segments[5].X2, 6);
 
-        PathSegment bulge = result.Segments[6];
-        Assert.Equal(SegmentKind.Arc, bulge.Kind);
+        ImportedSegment bulge = result.Segments[6];
+        Assert.Equal(ImportedSegmentKind.Arc, bulge.Kind);
         Assert.Equal(10, bulge.X1, 6);
         Assert.Equal(0, bulge.Y1, 6);
         Assert.Equal(15, bulge.X2, 6);
@@ -126,7 +121,7 @@ public class DxfImportTests : IDisposable
         Assert.Equal(10, bulge.X3, 6);
         Assert.Equal(10, bulge.Y3, 6);
 
-        Assert.Equal(SegmentKind.Line, result.Segments[7].Kind);
+        Assert.Equal(ImportedSegmentKind.Line, result.Segments[7].Kind);
         Assert.Equal(10, result.Segments[7].X1, 6);
         Assert.Equal(10, result.Segments[7].Y1, 6);
         Assert.Equal(0, result.Segments[7].X2, 6);
@@ -144,7 +139,7 @@ public class DxfImportTests : IDisposable
             Workspace = WorkspaceKind.Teach,
             FrameIsDefined = true
         };
-        document.Segments.AddRange(result.Segments);
+        document.Segments.AddRange(result.Segments.Select(ToPath));
         string packagePath = Path.Combine(_directory, "imported.dpath");
         ProjectPackage.Save(document, packagePath, null);
 
@@ -169,14 +164,31 @@ public class DxfImportTests : IDisposable
                 Unit = DrawingLengthUnit.Inch,
                 OriginX_mm = 1,
                 OriginY_mm = 2
-            },
-            glueOn: true,
-            speedMmPerS: 50);
+            });
 
-        PathSegment line = result.Segments[0];
+        ImportedSegment line = result.Segments[0];
         Assert.Equal(1, line.X1, 6);
         Assert.Equal(2, line.Y1, 6);
         Assert.Equal(10 * 25.4 + 1, line.X2, 6);
         Assert.Equal(2, line.Y2, 6);
     }
+
+    private static PathSegment ToPath(ImportedSegment segment) =>
+        new()
+        {
+            Kind = segment.Kind switch
+            {
+                ImportedSegmentKind.Dot => SegmentKind.Dot,
+                ImportedSegmentKind.Line => SegmentKind.Line,
+                ImportedSegmentKind.Arc => SegmentKind.Arc,
+                _ => throw new ArgumentOutOfRangeException(nameof(segment))
+            },
+            GlueOn = true,
+            X1 = segment.X1,
+            Y1 = segment.Y1,
+            X2 = segment.X2,
+            Y2 = segment.Y2,
+            X3 = segment.X3,
+            Y3 = segment.Y3
+        };
 }

@@ -8,7 +8,9 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        IReadOnlyList<string> pluginNotes = ExporterRegistry.LoadPlugins();
+        var pluginNotes = new List<string>();
+        pluginNotes.AddRange(ExporterRegistry.LoadPlugins());
+        pluginNotes.AddRange(ImporterRegistry.LoadPlugins());
         Application.Run(new MainForm(pluginNotes));
     }
 }

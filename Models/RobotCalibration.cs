@@ -110,7 +110,7 @@ public sealed class RobotWaypoint
     public double W_deg { get; init; }
     public double P_deg { get; init; }
     public double R_deg { get; init; }
-    public double Speed_mm_s { get; init; }
+    public double Width_mm { get; init; }
     public bool GlueOn { get; init; }
     public bool IsPreviewOnly { get; init; }
 }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Controls;
 using DispensePathAuthor.Models;
@@ -28,9 +27,12 @@ public partial class MainForm : Form
     private List<double> _gridSteps = new();
     private bool _updatingGrid;
     private double _toolWidthMm = ProcessDefaults.DefaultMinWidthMm;
+    private double _toolZDeltaMm;
     private bool _updatingWidth;
+    private bool _updatingZ;
     private readonly ToolStripMenuItem _projectSettingsMenuItem = new("Project settings...");
     private readonly ToolStripMenuItem _widthMenuItem = new("Width");
+    private readonly ToolStripMenuItem _zMenuItem = new("Z");
 
     private RobotCalibrationFile? _calibration
     {
@@ -96,9 +98,11 @@ public partial class MainForm : Form
         RefreshSegmentList();
         RefreshWaypointPreview();
         UpdateUndoMenuState();
-        SetActiveTool(DrawTool.Dot);
+        SetActiveTool(DrawTool.Select);
         _canvas.ResolveStoredFile = ResolveStoredFile;
+        _calibrationWarning.Font = new Font(_statusStrip.Font, FontStyle.Bold);
         _statusLabel.Text = "Choose a project to begin.";
+        UpdateCalibrationChrome();
     }
 
     public MainForm(IReadOnlyList<string> pluginNotes)
@@ -161,17 +165,17 @@ public partial class MainForm : Form
         _projectSettingsMenuItem.Click += OpenProjectSettings;
         int calibrationIndex = _fileMenu.DropDownItems.IndexOf(_loadCalibrationMenuItem);
         _fileMenu.DropDownItems.Insert(calibrationIndex + 1, _projectSettingsMenuItem);
-        _exportSettingsMenuItem.Click += OpenExportSettings;
         _exportCsvMenuItem.Click += ExportCsv;
-        BuildExporterMenu();
         BuildImporterMenu();
+        BuildExporterMenu();
         _undoMenuItem.Click += UndoAction;
         _redoMenuItem.Click += RedoAction;
         _cancelShapeMenuItem.Click += CancelPending;
         _deleteSegmentMenuItem.Click += DeleteSelectedSegment;
         _clearSegmentsMenuItem.Click += ClearSegments;
-        int clearIndex = _editMenu.DropDownItems.IndexOf(_clearSegmentsMenuItem);
-        _editMenu.DropDownItems.Insert(clearIndex + 1, _widthMenuItem);
+        _segmentsMenu.DropDownItems.Add(new ToolStripSeparator());
+        _segmentsMenu.DropDownItems.Add(_widthMenuItem);
+        _segmentsMenu.DropDownItems.Add(_zMenuItem);
         _fitViewMenuItem.Click += FitImage;
         _refreshPreviewMenuItem.Click += RefreshWaypointPreview;
         _simulatePlayMenuItem.Click += SimulationPlay;
@@ -240,6 +244,17 @@ public partial class MainForm : Form
             _canvas.SetToolWidth(width);
             BeginInvoke(SyncWidthUi);
         };
+        _toolPalette.ZDeltaChanged += (_, offset) =>
+        {
+            if (_updatingZ)
+            {
+                return;
+            }
+
+            _toolZDeltaMm = offset;
+            _canvas.SetToolZDelta(offset);
+            BeginInvoke(SyncZUi);
+        };
         _showGridMenuItem.Click += (_, _) =>
         {
             if (_updatingGrid)
@@ -268,6 +283,7 @@ public partial class MainForm : Form
             }
         };
         _segmentListPanel.MoveUpRequested += (_, _) => MoveSelectedSegment(-1);
+        _segmentListPanel.DeleteRequested += (_, _) => DeleteSelectedSegment();
         _segmentListPanel.MoveDownRequested += (_, _) => MoveSelectedSegment(1);
         _segmentListPanel.PropertiesEdited += (_, edit) =>
             _canvas.TrySetSegmentProperty(edit.Index, edit.Field, edit.Number, edit.Flag);
@@ -284,6 +300,7 @@ public partial class MainForm : Form
         ResetToolWidth();
         SyncGridUi();
         SyncWidthUi();
+        SyncZUi();
     }
 
     private void OnFormKeyDown(object? sender, KeyEventArgs e)
@@ -591,6 +608,7 @@ public partial class MainForm : Form
         TryLoadCalibrationFromDocument(document);
         MigrateOpenPath(recordUndo: false);
         ResetToolWidth();
+        ResetToolZ();
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
@@ -675,52 +693,6 @@ public partial class MainForm : Form
         _calibrationPath = saved.CalibrationPath;
     }
 
-    private void OpenExportSettings(object? sender, EventArgs e)
-    {
-        if (!TryApplyExportSettings())
-        {
-            return;
-        }
-
-        _statusLabel.Text = "Export settings updated";
-    }
-
-    private bool TryApplyExportSettings()
-    {
-        using var dialog = new ExportSettingsDialog(
-            _canvas.Document.Defaults,
-            _canvas.Document.Exporters.FanucLs,
-            _calibration,
-            _canvas.Document.Workspace == WorkspaceKind.Teach,
-            ExporterRegistry.Exporters,
-            _canvas.Document.Exporters);
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-        {
-            return false;
-        }
-
-        ApplyProcessDefaults(dialog.Result);
-        ApplyFanucSettings(dialog.FanucResult);
-        foreach ((string id, JsonElement section) in dialog.PluginSections)
-        {
-            _canvas.Document.Exporters.SetSection(id, section);
-        }
-
-        return true;
-    }
-
-    private void ApplyProcessDefaults(ProcessDefaults defaults)
-    {
-        ProcessDefaults target = _canvas.Document.Defaults;
-        target.Z_mm = defaults.Z_mm;
-        target.W_deg = defaults.W_deg;
-        target.P_deg = defaults.P_deg;
-        target.R_deg = defaults.R_deg;
-        target.Speed_mm_s = defaults.Speed_mm_s;
-        target.GlueOn = defaults.GlueOn;
-        RefreshWaypointPreview();
-    }
-
     private void ApplyFanucSettings(FanucLsSettings fanuc)
     {
         _canvas.Document.Exporters.FanucLs = fanuc.Clone();
@@ -765,11 +737,6 @@ public partial class MainForm : Form
 
     private void ExportCsv(object? sender, EventArgs e)
     {
-        if (!TryApplyExportSettings())
-        {
-            return;
-        }
-
         var waypoints = BuildExportWaypoints();
         if (waypoints.Count == 0)
         {
@@ -793,8 +760,21 @@ public partial class MainForm : Form
 
     private void ExportWith(IProgramExporter exporter)
     {
-        if (!TryApplyExportSettings())
+        if (exporter is IInteractiveProgramExporter interactive)
         {
+            try
+            {
+                string? path = interactive.TryRun(this, new FanucExportSession(this));
+                if (path != null)
+                {
+                    _statusLabel.Text = $"Exported: {path}";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
             return;
         }
 
@@ -852,6 +832,11 @@ public partial class MainForm : Form
 
     private void BuildImporterMenu()
     {
+        if (ImporterRegistry.Importers.Count == 0)
+        {
+            return;
+        }
+
         var importMenu = new ToolStripMenuItem("Import") { Name = "importMenu" };
         foreach (IGeometryImporter importer in ImporterRegistry.Importers)
         {
@@ -861,37 +846,37 @@ public partial class MainForm : Form
             importMenu.DropDownItems.Add(item);
         }
 
-        _menuStrip.Items.Insert(1, importMenu);
+        int index = _fileMenu.DropDownItems.IndexOf(_projectSettingsMenuItem) + 1;
+        if (index < _fileMenu.DropDownItems.Count && _fileMenu.DropDownItems[index] is ToolStripSeparator)
+        {
+            index++;
+        }
+
+        _fileMenu.DropDownItems.Insert(index, importMenu);
     }
 
     private void ImportWith(IGeometryImporter importer)
     {
-        string? reason = importer.UnavailableReason(_canvas.Document.Workspace);
-        if (reason != null)
+        if (_canvas.Document.Workspace is not (WorkspaceKind.Cv or WorkspaceKind.Teach))
         {
-            MessageBox.Show(this, reason, importer.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                this,
+                "Choose a project before importing a drawing.",
+                importer.MenuLabel,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
             return;
         }
 
-        if (!EnsureMillimeterPath())
-        {
-            return;
-        }
-
-        using var fileDialog = new OpenFileDialog
-        {
-            Filter = importer.FileFilter,
-            Title = importer.MenuLabel
-        };
-        if (fileDialog.ShowDialog(this) != DialogResult.OK)
+        if (!EnsureMillimeterPath(importer.MenuLabel))
         {
             return;
         }
 
-        GeometryImportSurvey survey;
+        GeometryImportResult? result;
         try
         {
-            survey = importer.Survey(fileDialog.FileName);
+            result = importer.Prompt(this);
         }
         catch (Exception ex)
         {
@@ -899,47 +884,25 @@ public partial class MainForm : Form
             return;
         }
 
-        using var page = new GeometryImportDialog(survey);
-        if (page.ShowDialog(this) != DialogResult.OK)
+        if (result == null)
         {
             return;
         }
 
-        GeometryImportResult result;
-        try
+        bool glueOn = _canvas.Document.Defaults.GlueOn;
+        var segments = new List<PathSegment>(result.Segments.Count);
+        foreach (ImportedSegment imported in result.Segments)
         {
-            result = importer.Import(
-                fileDialog.FileName,
-                new GeometryImportOptions
-                {
-                    Layers = page.SelectedLayers,
-                    Unit = page.Unit,
-                    OriginX_mm = page.OriginX_mm,
-                    OriginY_mm = page.OriginY_mm
-                },
-                _canvas.Document.Defaults.GlueOn,
-                _canvas.Document.Defaults.Speed_mm_s);
-            foreach (PathSegment segment in result.Segments)
-            {
-                if (segment.Kind != SegmentKind.Dot)
-                {
-                    segment.Width_mm = _toolWidthMm;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, importer.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
+            segments.Add(ToPathSegment(imported, glueOn));
         }
 
-        _canvas.AppendSegments(result.Segments);
-        if (result.Segments.Count > 0)
+        _canvas.AppendSegments(segments);
+        if (segments.Count > 0)
         {
             _canvas.FitToView();
         }
 
-        _statusLabel.Text = $"Imported {result.Segments.Count} segments.";
+        _statusLabel.Text = $"Imported {segments.Count} segments.";
         if (result.Warnings.Count > 0)
         {
             MessageBox.Show(
@@ -951,12 +914,36 @@ public partial class MainForm : Form
         }
     }
 
+    private PathSegment ToPathSegment(ImportedSegment imported, bool glueOn)
+    {
+        SegmentKind kind = imported.Kind switch
+        {
+            ImportedSegmentKind.Dot => SegmentKind.Dot,
+            ImportedSegmentKind.Line => SegmentKind.Line,
+            ImportedSegmentKind.Arc => SegmentKind.Arc,
+            _ => throw new ArgumentOutOfRangeException(nameof(imported))
+        };
+        return new PathSegment
+        {
+            Kind = kind,
+            GlueOn = glueOn,
+            ZDelta_mm = _toolZDeltaMm,
+            Width_mm = kind == SegmentKind.Dot || !glueOn ? 0 : _toolWidthMm,
+            X1 = imported.X1,
+            Y1 = imported.Y1,
+            X2 = imported.X2,
+            Y2 = imported.Y2,
+            X3 = imported.X3,
+            Y3 = imported.Y3
+        };
+    }
+
     private void MigrateOpenPath(bool recordUndo)
     {
         _canvas.AdoptFrameMillimeters(_calibration, recordUndo);
     }
 
-    private bool EnsureMillimeterPath()
+    private bool EnsureMillimeterPath(string title)
     {
         MigrateOpenPath(recordUndo: true);
         if (_canvas.Document.Workspace != WorkspaceKind.Cv ||
@@ -967,8 +954,8 @@ public partial class MainForm : Form
 
         MessageBox.Show(
             this,
-            "Load calibration before importing a DXF. The current CV path is still stored in pixels.",
-            "Import DXF",
+            "Load calibration before importing a drawing. The current CV path is still stored in pixels.",
+            title,
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
         return false;
@@ -976,21 +963,36 @@ public partial class MainForm : Form
 
     private void BuildExporterMenu()
     {
-        int index = _fileMenu.DropDownItems.IndexOf(_exportLsMenuItem);
-        _fileMenu.DropDownItems.Remove(_exportLsMenuItem);
-        if (index < 0)
+        if (ExporterRegistry.Exporters.Count == 0)
         {
-            index = _fileMenu.DropDownItems.IndexOf(_exportCsvMenuItem) + 1;
+            return;
         }
 
+        var exportMenu = new ToolStripMenuItem("Export") { Name = "exportMenu" };
         foreach (IProgramExporter exporter in ExporterRegistry.Exporters)
         {
             IProgramExporter captured = exporter;
-            var item = new ToolStripMenuItem(captured.MenuLabel);
+            var item = new ToolStripMenuItem(captured.MenuLabel) { Name = captured.Id + "ExportMenuItem" };
             item.Click += (_, _) => ExportWith(captured);
-            _fileMenu.DropDownItems.Insert(index, item);
-            index++;
+            exportMenu.DropDownItems.Add(item);
         }
+
+        ToolStripItem[] importItems = _fileMenu.DropDownItems.Find("importMenu", false);
+        int index;
+        if (importItems.Length > 0)
+        {
+            index = _fileMenu.DropDownItems.IndexOf(importItems[0]) + 1;
+        }
+        else
+        {
+            index = _fileMenu.DropDownItems.IndexOf(_projectSettingsMenuItem) + 1;
+            if (index < _fileMenu.DropDownItems.Count && _fileMenu.DropDownItems[index] is ToolStripSeparator)
+            {
+                index++;
+            }
+        }
+
+        _fileMenu.DropDownItems.Insert(index, exportMenu);
     }
 
     private void DeleteSelectedSegment(object? sender, EventArgs e) => DeleteSelectedSegment();
@@ -1086,6 +1088,7 @@ public partial class MainForm : Form
         _cvPanel?.ShowFrame(_canvas.Document.Frame);
         SyncGridUi();
         SyncWidthUi();
+        SyncZUi();
     }
 
     private void ApplyGridStep(double step)
@@ -1248,6 +1251,79 @@ public partial class MainForm : Form
         SyncWidthUi();
     }
 
+    private void ResetToolZ()
+    {
+        _toolZDeltaMm = 0;
+        _canvas.SetToolZDelta(0);
+    }
+
+    private void SyncZUi()
+    {
+        List<double> shown = ZOffsets.DisplayList(_canvas.Document.Defaults.ZDeltas_mm, _toolZDeltaMm, out double selected);
+        _toolZDeltaMm = selected;
+        _canvas.SetToolZDelta(selected);
+        _updatingZ = true;
+        try
+        {
+            _toolPalette.BindZDeltas(shown, selected);
+            RebuildZMenu(shown, selected);
+        }
+        finally
+        {
+            _updatingZ = false;
+        }
+    }
+
+    private void RebuildZMenu(IReadOnlyList<double> offsets, double selected)
+    {
+        var items = new List<ToolStripItem>();
+        foreach (double offset in offsets)
+        {
+            double chosen = offset;
+            var item = new ToolStripMenuItem(ZOffsets.Format(offset))
+            {
+                Checked = ZOffsets.NearlyEqual(offset, selected)
+            };
+            item.Click += (_, _) =>
+            {
+                if (_updatingZ)
+                {
+                    return;
+                }
+
+                _toolZDeltaMm = chosen;
+                _canvas.SetToolZDelta(chosen);
+                BeginInvoke(SyncZUi);
+            };
+            items.Add(item);
+        }
+
+        items.Add(new ToolStripSeparator());
+        var customize = new ToolStripMenuItem("Customize...");
+        customize.Click += (_, _) => BeginInvoke(CustomizeZDeltas);
+        items.Add(customize);
+
+        ToolStripItem[] previous = _zMenuItem.DropDownItems.Cast<ToolStripItem>().ToArray();
+        _zMenuItem.DropDownItems.Clear();
+        _zMenuItem.DropDownItems.AddRange(items.ToArray());
+        foreach (ToolStripItem item in previous)
+        {
+            item.Dispose();
+        }
+    }
+
+    private void CustomizeZDeltas()
+    {
+        using var dialog = new ZDeltasDialog(_canvas.Document.Defaults.ZDeltas_mm);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _canvas.SetZDeltas(dialog.Steps);
+        SyncZUi();
+    }
+
     private void OpenProjectSettings(object? sender, EventArgs e)
     {
         using var dialog = new ProjectSettingsDialog(
@@ -1289,8 +1365,8 @@ public partial class MainForm : Form
         UpdateUndoMenuState();
         RefreshTileList();
         _statusLabel.Text = moveShapes
-            ? "Frame applied — shapes rebinding kept sensor px"
-            : "Frame applied — local px unchanged";
+            ? "Frame applied — shapes stayed on the image"
+            : "Frame applied — local mm unchanged";
     }
 
     private void CancelFrameEdit()
@@ -1414,7 +1490,10 @@ public partial class MainForm : Form
             string.IsNullOrWhiteSpace(document.CalibrationPath) ||
             calibrationFile == null)
         {
+            _calibration = null;
+            _calibrationPath = null;
             SetCalibrationText("Calibration: not loaded");
+            UpdateCalibrationChrome();
             return;
         }
 
@@ -1424,6 +1503,10 @@ public partial class MainForm : Form
         }
         catch
         {
+            _calibration = null;
+            _calibrationPath = null;
+            SetCalibrationText("Calibration: not loaded");
+            UpdateCalibrationChrome();
             _statusLabel.Text = "Path references calibration file that could not be loaded";
         }
     }
@@ -1446,15 +1529,30 @@ public partial class MainForm : Form
         MigrateOpenPath(recordUndo);
         RefreshTileList();
         RefreshWaypointPreview();
+        UpdateCalibrationChrome();
+    }
+
+    private void UpdateCalibrationChrome()
+    {
+        WorkspaceKind workspace = _canvas.Document.Workspace;
+        _loadCalibrationMenuItem.Visible = workspace != WorkspaceKind.Teach;
+        _calibrationWarning.Visible = workspace == WorkspaceKind.Cv && _calibration == null;
     }
 
     private void SetCalibrationText(string text) => _cvPanel?.SetCalibrationText(text);
+
+    private void ApplySnapDefault(bool enabled)
+    {
+        _canvas.SnapToPointEnabled = enabled;
+        _toolPalette.SetSnapEnabled(enabled);
+    }
 
     private void ShowProjectPanel(WorkspaceKind kind)
     {
         _canvas.UseSpace(kind == WorkspaceKind.Teach
             ? new TeachCanvasSpace()
             : new CvCanvasSpace());
+        UpdateCalibrationChrome();
         SetFrameHostVisible(false);
         if (kind == WorkspaceKind.Cv)
         {
@@ -1462,7 +1560,7 @@ public partial class MainForm : Form
             _cvPanel ??= CreateCvPanel();
             _cvPanel.MountFrame(_frameHost);
             SetFrameHostVisible(true);
-            _toolPalette.SetSnapEnabled(false);
+            ApplySnapDefault(false);
             AttachProjectPage("FOV Tiles", _cvPanel);
             return;
         }
@@ -1471,7 +1569,7 @@ public partial class MainForm : Form
         {
             DisposeProjectPanel(ref _cvPanel);
             _teachPanel ??= CreateTeachPanel();
-            _toolPalette.SetSnapEnabled(true);
+            ApplySnapDefault(true);
             AttachProjectPage("Teach Points", _teachPanel);
             return;
         }
@@ -1720,6 +1818,7 @@ public partial class MainForm : Form
         _canvas.ResetProject();
         AttachSession(kind);
         ResetToolWidth();
+        ResetToolZ();
         SyncUiFromDocument();
         RefreshSegmentList();
         RefreshWaypointPreview();
@@ -1751,5 +1850,105 @@ public partial class MainForm : Form
                 "New project",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question) == DialogResult.Yes;
+    }
+
+    private sealed class FanucExportSession(MainForm form) : IFanucExportSession
+    {
+        public bool IsTeachWorkspace => form._canvas.Document.Workspace == WorkspaceKind.Teach;
+
+        public FanucExportSettings Settings => MapSettings(form._canvas.Document.Exporters.FanucLs);
+
+        public FanucCalibrationSnapshot Calibration => MapCalibration(form._calibration);
+
+        public void ApplySettings(FanucExportSettings settings) =>
+            form.ApplyFanucSettings(MapSettings(settings));
+
+        public IReadOnlyList<FanucExportPoint> CreatePoints() =>
+            form.BuildExportWaypoints().Select(MapPoint).ToList();
+
+        private static FanucExportSettings MapSettings(FanucLsSettings fanuc) =>
+            new()
+            {
+                CoordinateMode = fanuc.CoordinateMode switch
+                {
+                    ExportCoordinateMode.UframeAbsolute => FanucCoordinateMode.UframeAbsolute,
+                    ExportCoordinateMode.OffsetFromFrameOrigin => FanucCoordinateMode.OffsetFromFrameOrigin,
+                    _ => FanucCoordinateMode.OffsetFromCalibrationRef
+                },
+                UseFovCenterNeedleOffset = fanuc.UseFovCenterNeedleOffset,
+                LocalRotation = fanuc.LocalRotation switch
+                {
+                    ExportLocalRotation.Degree90 => FanucLocalRotation.Degree90,
+                    ExportLocalRotation.Degree180 => FanucLocalRotation.Degree180,
+                    _ => FanucLocalRotation.None
+                },
+                UseNeedleOffset = fanuc.UseNeedleOffset,
+                NeedleOffsetX_mm = fanuc.NeedleOffsetX_mm,
+                NeedleOffsetY_mm = fanuc.NeedleOffsetY_mm,
+                NeedleOffsetR_deg = fanuc.NeedleOffsetR_deg,
+                UserFrame = fanuc.UserFrame,
+                UserTool = fanuc.UserTool
+            };
+
+        private static FanucLsSettings MapSettings(FanucExportSettings settings) =>
+            new()
+            {
+                CoordinateMode = settings.CoordinateMode switch
+                {
+                    FanucCoordinateMode.UframeAbsolute => ExportCoordinateMode.UframeAbsolute,
+                    FanucCoordinateMode.OffsetFromFrameOrigin => ExportCoordinateMode.OffsetFromFrameOrigin,
+                    _ => ExportCoordinateMode.OffsetFromCalibrationRef
+                },
+                UseFovCenterNeedleOffset = settings.UseFovCenterNeedleOffset,
+                LocalRotation = settings.LocalRotation switch
+                {
+                    FanucLocalRotation.Degree90 => ExportLocalRotation.Degree90,
+                    FanucLocalRotation.Degree180 => ExportLocalRotation.Degree180,
+                    _ => ExportLocalRotation.None
+                },
+                UseNeedleOffset = settings.UseNeedleOffset,
+                NeedleOffsetX_mm = settings.NeedleOffsetX_mm,
+                NeedleOffsetY_mm = settings.NeedleOffsetY_mm,
+                NeedleOffsetR_deg = settings.NeedleOffsetR_deg,
+                UserFrame = settings.UserFrame,
+                UserTool = settings.UserTool
+            };
+
+        private static FanucCalibrationSnapshot MapCalibration(RobotCalibrationFile? calibration) =>
+            new()
+            {
+                HasTransform = calibration?.PixelToRobot != null,
+                IsCompactMarker = calibration?.IsCompactMarker == true,
+                PoseId = calibration?.CalibrationPoseId,
+                FrameWidth = calibration?.FrameWidth ?? 0,
+                FrameHeight = calibration?.FrameHeight ?? 0,
+                ReferencePixelX = calibration?.ReferencePixelX ?? 0,
+                ReferencePixelY = calibration?.ReferencePixelY ?? 0,
+                ReferenceRobotX_mm = calibration?.ReferenceRobotX_mm ?? 0,
+                ReferenceRobotY_mm = calibration?.ReferenceRobotY_mm ?? 0,
+                FixedRobotZ_mm = calibration?.FixedRobotZ_mm,
+                FixedRobotW_deg = calibration?.FixedRobotW_deg,
+                FixedRobotP_deg = calibration?.FixedRobotP_deg,
+                FixedRobotR_deg = calibration?.FixedRobotR_deg,
+                DefaultUserFrame = FanucFrameNumbers.Parse(calibration?.RobotFrame, 1),
+                DefaultUserTool = FanucFrameNumbers.Parse(calibration?.RobotTool, 1)
+            };
+
+        private static FanucExportPoint MapPoint(RobotWaypoint waypoint) =>
+            new()
+            {
+                Index = waypoint.Index,
+                Role = waypoint.Role,
+                LocalX_px = waypoint.LocalX_px,
+                LocalY_px = waypoint.LocalY_px,
+                SensorX_px = waypoint.SensorX_px,
+                SensorY_px = waypoint.SensorY_px,
+                ExportX_mm = waypoint.ExportX_mm,
+                ExportY_mm = waypoint.ExportY_mm,
+                ExportR_deg = waypoint.ExportR_deg,
+                Z_mm = waypoint.Z_mm,
+                Width_mm = waypoint.Width_mm,
+                IsPreviewOnly = waypoint.IsPreviewOnly
+            };
     }
 }

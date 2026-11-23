@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using DispensePathAuthor.Contracts;
 
-namespace DispensePathAuthor.Xyz;
+namespace DispensePathAuthor.Export.Xyz;
 
 public partial class XyzSettingsPanel : UserControl, IExporterSettingsPage
 {

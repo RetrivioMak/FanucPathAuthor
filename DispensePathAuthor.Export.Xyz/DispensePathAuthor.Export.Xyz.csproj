@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>DispensePathAuthor.Xyz</RootNamespace>
+    <RootNamespace>DispensePathAuthor.Export.Xyz</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

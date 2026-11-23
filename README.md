@@ -48,7 +48,7 @@ Output: `bin\x64\Release\net8.0-windows\win-x64\publish\DispensePathAuthor.exe`
 4. **File �� Load calibration JSON** �� `RobotCvTransformCalibration.json`
 5. Check **Robot preview** panel for Fanuc XY
 6. **File -> Save path JSON**
-7. **File -> Export settings...** (Z/W/P/R/speed) — also shown before CSV / `.LS` export
+7. **File -> Export settings...** (Z/W/P/R) — also shown before CSV / `.LS` export
 8. **File -> Export CSV** or **Export Fanuc .LS**
 
 ## Path JSON format
@@ -58,11 +58,11 @@ Output: `bin\x64\Release\net8.0-windows\win-x64\publish\DispensePathAuthor.exe`
   "schemaVersion": 1,
   "imagePath": "C:\\path\\to\\image.png",
   "frame": { "originX_px": 1229, "originY_px": 1017, "angleDeg": 0 },
-  "defaults": { "z_mm": 0, "w_deg": 0, "p_deg": 0, "r_deg": 0, "speed_mm_s": 50, "glueOn": true },
+  "defaults": { "z_mm": 0, "w_deg": 0, "p_deg": 0, "r_deg": 0, "glueOn": true },
   "segments": [
-    { "kind": "dot", "x1": 10, "y1": 20, "glueOn": true, "speed_mm_s": 50 },
-    { "kind": "line", "x1": 0, "y1": 0, "x2": 100, "y2": 0, "glueOn": true, "speed_mm_s": 50 },
-    { "kind": "arc", "x1": 0, "y1": 0, "x2": 50, "y2": 50, "x3": 100, "y3": 0, "glueOn": true, "speed_mm_s": 50 }
+    { "kind": "dot", "x1": 10, "y1": 20, "glueOn": true },
+    { "kind": "line", "x1": 0, "y1": 0, "x2": 100, "y2": 0, "glueOn": true },
+    { "kind": "arc", "x1": 0, "y1": 0, "x2": 50, "y2": 50, "x3": 100, "y3": 0, "glueOn": true }
   ]
 }
 ```
@@ -112,7 +112,7 @@ If you see `CS0579` duplicate assembly attributes or `Xunit` errors in the **mai
 
 - No Euresys / Open eVision license required in this tool
 - Calibration JSON is read-only input from Nilgiris
-- Z / W / P / speed are set in **Export settings** (saved in path JSON `defaults`)
+- Z / W / P are set in **Export settings** (saved in path JSON `defaults`). Feed is not stored; the export module computes it from thickness, nozzle, and pressure.
 - Runtime Frame offset on the robot is **not** part of this MVP
 
 ## Post-MVP (planned)

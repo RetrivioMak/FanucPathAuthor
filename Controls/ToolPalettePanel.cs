@@ -37,6 +37,13 @@ public sealed class ToolPalettePanel : Panel
         MaxDropDownItems = 12,
         Width = 96
     };
+    private readonly ComboBox _zDelta = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        IntegralHeight = false,
+        MaxDropDownItems = 12,
+        Width = 96
+    };
     private readonly ToolPaletteButton _fit = CreateAction("Fit", ToolIconFactory.Fit);
     private readonly ToolPaletteButton _simPlay = CreateIconAction(ToolIconFactory.SimPlay);
     private readonly ToolPaletteButton _simPause = CreateIconAction(ToolIconFactory.SimPause);
@@ -61,12 +68,14 @@ public sealed class ToolPalettePanel : Panel
 
     private bool _gridUpdating;
     private bool _widthUpdating;
+    private bool _zUpdating;
 
     public event EventHandler<DrawTool>? ToolSelected;
     public event EventHandler<bool>? SnapToPointChanged;
     public event EventHandler<bool>? ShowGridChanged;
     public event EventHandler<double>? GridStepChanged;
     public event EventHandler<double>? WidthChanged;
+    public event EventHandler<double>? ZDeltaChanged;
     public event EventHandler? FitRequested;
     public event EventHandler? SimulationPlayRequested;
     public event EventHandler? SimulationPauseRequested;
@@ -93,7 +102,7 @@ public sealed class ToolPalettePanel : Panel
 
         root.Controls.Add(CreateGroup("Pointer", _select, _move));
         root.Controls.Add(CreateGroup("Frame", _frame));
-        root.Controls.Add(CreateGroup("Draw", _dot, _line, _arc, _rect, _circle, _snap, CreateWidthHost()));
+        root.Controls.Add(CreateGroup("Draw", _dot, _line, _arc, _rect, _circle, _snap, CreateWidthHost(), CreateZHost()));
         root.Controls.Add(CreateGridGroup());
         root.Controls.Add(CreateGroup("View", _fit));
         root.Controls.Add(CreateSimulationGroup());
@@ -134,6 +143,15 @@ public sealed class ToolPalettePanel : Panel
                 WidthChanged?.Invoke(this, width);
             }
         };
+        _zDelta.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_zUpdating &&
+                _zDelta.SelectedItem is string text &&
+                ZOffsets.TryParse(text, out double offset))
+            {
+                ZDeltaChanged?.Invoke(this, offset);
+            }
+        };
         _fit.Click += (_, _) => FitRequested?.Invoke(this, EventArgs.Empty);
         BindGrid(true, TeachGridSettings.DefaultStepsMm, 0.2);
 
@@ -171,6 +189,7 @@ public sealed class ToolPalettePanel : Panel
         _tips.SetToolTip(_circle, "Circle. Draw a circle from the center and a radius point.");
         _tips.SetToolTip(_snap, "Snap. Snap the cursor to points and grid intersections.");
         _tips.SetToolTip(_width, "Width, mm. Stroke used for the next line or arc.");
+        _tips.SetToolTip(_zDelta, "Z offset, mm. Added to project Z for the next segment. 0 uses project Z.");
         _tips.SetToolTip(_showGrid, "Grid. Show or hide the grid.");
         _tips.SetToolTip(_gridStep, "Grid step, mm. Choose the distance between grid points.");
         _tips.SetToolTip(_fit, "Fit. Fit the whole path in the view.");
@@ -220,6 +239,25 @@ public sealed class ToolPalettePanel : Panel
         }
     }
 
+    public void BindZDeltas(IReadOnlyList<double> offsets, double selected)
+    {
+        _zUpdating = true;
+        try
+        {
+            _zDelta.Items.Clear();
+            foreach (double value in offsets)
+            {
+                _zDelta.Items.Add(ZOffsets.Format(value));
+            }
+
+            _zDelta.SelectedItem = ZOffsets.Format(selected);
+        }
+        finally
+        {
+            _zUpdating = false;
+        }
+    }
+
     public void SetShowGrid(bool show)
     {
         if (_showGrid.IsChecked == show)
@@ -240,12 +278,11 @@ public sealed class ToolPalettePanel : Panel
 
     public void SetSnapEnabled(bool enabled)
     {
-        if (_snap.IsChecked == enabled)
+        if (_snap.IsChecked != enabled)
         {
-            return;
+            _snap.IsChecked = enabled;
         }
 
-        _snap.IsChecked = enabled;
         SnapToPointChanged?.Invoke(this, enabled);
     }
 
@@ -313,6 +350,30 @@ public sealed class ToolPalettePanel : Panel
         _width.Location = new Point(4, 34);
         host.Controls.Add(caption);
         host.Controls.Add(_width);
+        return host;
+    }
+
+    private Control CreateZHost()
+    {
+        var host = new Panel
+        {
+            Width = 108,
+            Height = PaletteItemHeight,
+            MinimumSize = new Size(108, PaletteItemHeight),
+            MaximumSize = new Size(108, PaletteItemHeight),
+            Margin = new Padding(4, 2, 4, 2)
+        };
+        var caption = new Label
+        {
+            AutoSize = true,
+            Text = "Z mm",
+            Font = new Font("Segoe UI", 8f),
+            ForeColor = Color.DimGray,
+            Location = new Point(4, 10)
+        };
+        _zDelta.Location = new Point(4, 34);
+        host.Controls.Add(caption);
+        host.Controls.Add(_zDelta);
         return host;
     }
 

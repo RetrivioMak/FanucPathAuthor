@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DispensePathAuthor.Import.Dxf</RootNamespace>
+    <!-- Plugin output must contain netDxf.dll; class libraries do not copy NuGet assemblies otherwise. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DispensePathAuthor.Contracts\DispensePathAuthor.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="netDxf" Version="2023.11.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="DxfImportDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="DxfImportDialog.Designer.cs">
+      <DependentUpon>DxfImportDialog.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="DxfImportDialog.resx">
+      <DependentUpon>DxfImportDialog.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

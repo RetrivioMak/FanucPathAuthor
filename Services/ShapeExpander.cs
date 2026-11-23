@@ -12,8 +12,7 @@ public static class ShapeExpander
         double y1,
         double x2,
         double y2,
-        bool glueOn,
-        double speed_mm_s)
+        bool glueOn)
     {
         double minX = Math.Min(x1, x2);
         double maxX = Math.Max(x1, x2);
@@ -37,7 +36,6 @@ public static class ShapeExpander
             {
                 Kind = SegmentKind.Line,
                 GlueOn = glueOn,
-                Speed_mm_s = speed_mm_s,
                 X1 = ax,
                 Y1 = ay,
                 X2 = bx,
@@ -56,8 +54,7 @@ public static class ShapeExpander
         double centerY,
         double radiusPointX,
         double radiusPointY,
-        bool glueOn,
-        double speed_mm_s)
+        bool glueOn)
     {
         double dx = radiusPointX - centerX;
         double dy = radiusPointY - centerY;
@@ -76,8 +73,7 @@ public static class ShapeExpander
                 centerY + radius,
                 centerX - radius,
                 centerY,
-                glueOn,
-                speed_mm_s),
+                glueOn),
             CreateArcSegment(
                 centerX - radius,
                 centerY,
@@ -85,8 +81,7 @@ public static class ShapeExpander
                 centerY - radius,
                 centerX + radius,
                 centerY,
-                glueOn,
-                speed_mm_s)
+                glueOn)
         ];
     }
 
@@ -97,13 +92,11 @@ public static class ShapeExpander
         double y2,
         double x3,
         double y3,
-        bool glueOn,
-        double speed_mm_s) =>
+        bool glueOn) =>
         new()
         {
             Kind = SegmentKind.Arc,
             GlueOn = glueOn,
-            Speed_mm_s = speed_mm_s,
             X1 = x1,
             Y1 = y1,
             X2 = x2,

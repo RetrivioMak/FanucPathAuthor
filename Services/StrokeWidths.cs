@@ -60,6 +60,25 @@ public static class StrokeWidths
         return Floor(minimum);
     }
 
+    /// <summary>
+    /// Width written to a program. Zero means the glue is off.
+    /// A glue-on dot has no bead, so it exports the project minimum and stays distinct from zero.
+    /// </summary>
+    public static double ExportWidth(PathSegment segment, double minimum)
+    {
+        if (!segment.GlueOn)
+        {
+            return 0;
+        }
+
+        if (segment.Kind == SegmentKind.Dot)
+        {
+            return Floor(minimum);
+        }
+
+        return Effective(segment, minimum);
+    }
+
     public static float ScreenPixels(double widthMm, double mmPerPx, float zoom)
     {
         if (widthMm <= 0)
@@ -139,6 +158,7 @@ public static class StrokeWidths
         }
 
         defaults.Widths_mm = StoredList(defaults.Widths_mm, defaults.MinWidth_mm);
+        ZOffsets.EnsureStored(defaults);
     }
 
     public static void AssignMissing(PathDocument document)
@@ -147,7 +167,18 @@ public static class StrokeWidths
         double minimum = document.Defaults.MinWidth_mm;
         foreach (PathSegment segment in document.Segments)
         {
-            if (segment.Kind is SegmentKind.Line or SegmentKind.Arc && segment.Width_mm <= 0)
+            if (segment.Kind is not (SegmentKind.Line or SegmentKind.Arc))
+            {
+                continue;
+            }
+
+            if (!segment.GlueOn)
+            {
+                segment.Width_mm = 0;
+                continue;
+            }
+
+            if (segment.Width_mm <= 0)
             {
                 segment.Width_mm = minimum;
             }
@@ -159,11 +190,11 @@ public static class StrokeWidths
         left.W_deg.Equals(right.W_deg) &&
         left.P_deg.Equals(right.P_deg) &&
         left.R_deg.Equals(right.R_deg) &&
-        left.Speed_mm_s.Equals(right.Speed_mm_s) &&
         left.GlueOn == right.GlueOn &&
         NearlyEqual(left.MinWidth_mm, right.MinWidth_mm) &&
         Math.Abs(left.ReferenceMmPerPx - right.ReferenceMmPerPx) < 1e-9 &&
-        SameList(left.Widths_mm, right.Widths_mm);
+        SameList(left.Widths_mm, right.Widths_mm) &&
+        ZOffsets.SameList(left.ZDeltas_mm, right.ZDeltas_mm);
 
     private static bool TryInclude(List<double> values, double width)
     {

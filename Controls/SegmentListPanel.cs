@@ -4,58 +4,31 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor.Controls;
 
-public sealed class SegmentPropertyEditEventArgs : EventArgs
-{
-    public required int Index { get; init; }
-    public required SegmentPropertyField Field { get; init; }
-    public required double Number { get; init; }
-    public required bool Flag { get; init; }
-}
-
 public partial class SegmentListPanel : UserControl
 {
     private const decimal CoordinateMin = -1_000_000m;
     private const decimal CoordinateMax = 1_000_000m;
-    private const decimal SpeedMax = 1_000_000m;
-    private const int PropertiesMinHeight = 140;
-    private const int PropertiesDefaultHeight = 320;
-    private const int ListMinHeight = 140;
 
     private static readonly Color SelectedNameColor = Color.FromArgb(173, 214, 255);
 
-    private readonly DataGridView _propertyGrid;
-    private readonly Label _propertiesCaption;
-    private readonly Panel _propertiesHost;
+    private PropertiesResizeGrip? _propertiesResizeGrip;
+
     private string? _editOriginal;
     private double _widthFloor = StrokeWidths.MinMm;
+    private IReadOnlyList<double> _widthOptions = Array.Empty<double>();
+    private IReadOnlyList<double> _zOptions = Array.Empty<double>();
+    private bool _propertiesUserSized;
     private bool _updating;
     private bool _committing;
 
     public SegmentListPanel()
     {
         InitializeComponent();
-        _propertyGrid = CreatePropertyGrid();
-        _propertiesCaption = new Label
-        {
-            Dock = DockStyle.Top,
-            ForeColor = Color.FromArgb(30, 70, 140),
-            Height = 26,
-            Padding = new Padding(6, 0, 0, 0),
-            Text = "Properties",
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-        _propertiesHost = new Panel
-        {
-            Dock = DockStyle.Bottom,
-            Height = PropertiesDefaultHeight,
-            Name = "propertiesHost"
-        };
-        var resizeGrip = new PropertiesResizeGrip(_propertiesHost, PropertiesMinHeight, ListMinHeight);
-        _propertiesHost.Controls.Add(_propertyGrid);
-        _propertiesHost.Controls.Add(_propertiesCaption);
-        _propertiesHost.Controls.Add(resizeGrip);
-        Controls.Add(_propertiesHost);
-
+        EnsureSegmentColumns();
+        _propertiesResizeGrip = new PropertiesResizeGrip();
+        _propertiesResizeGrip.UserSized += (_, _) => _propertiesUserSized = true;
+        _propertiesHost.Controls.Add(_propertiesResizeGrip);
+        _propertyGrid.EditingControlShowing += OnPropertyEditingControlShowing;
         _propertyGrid.CellBeginEdit += OnPropertyBeginEdit;
         _propertyGrid.CellEndEdit += OnPropertyEndEdit;
         _propertyGrid.CellValidating += OnPropertyValidating;
@@ -73,13 +46,17 @@ public partial class SegmentListPanel : UserControl
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         };
         _moveUpButton.Click += (_, _) => MoveUpRequested?.Invoke(this, EventArgs.Empty);
+        _deleteButton.Click += (_, _) => DeleteRequested?.Invoke(this, EventArgs.Empty);
         _moveDownButton.Click += (_, _) => MoveDownRequested?.Invoke(this, EventArgs.Empty);
+        ApplyPropertiesHeight();
         ShowProperties(null, -1, "mm");
     }
 
     public event EventHandler? SelectionChanged;
 
     public event EventHandler? MoveUpRequested;
+
+    public event EventHandler? DeleteRequested;
 
     public event EventHandler? MoveDownRequested;
 
@@ -100,6 +77,8 @@ public partial class SegmentListPanel : UserControl
             : PathSequenceService.DefaultGapThresholdPx;
         string gapUnit = millimeters ? "mm" : "px";
         _widthFloor = StrokeWidths.Floor(document.Defaults.MinWidth_mm);
+        _widthOptions = StrokeWidths.StoredList(document.Defaults.Widths_mm, _widthFloor);
+        _zOptions = ZOffsets.StoredList(document.Defaults.ZDeltas_mm);
         IReadOnlyList<SequenceGap> gaps = PathSequenceService.AnalyzeGaps(document.Segments);
         int selected = preferredSelection ?? SelectedIndex ?? -1;
 
@@ -150,51 +129,6 @@ public partial class SegmentListPanel : UserControl
         UpdateReorderButtons(document.Segments.Count);
     }
 
-    private static DataGridView CreatePropertyGrid()
-    {
-        var grid = new DataGridView
-        {
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            BackgroundColor = SystemColors.Window,
-            BorderStyle = BorderStyle.FixedSingle,
-            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-            Dock = DockStyle.Fill,
-            EditMode = DataGridViewEditMode.EditOnEnter,
-            EnableHeadersVisualStyles = true,
-            MultiSelect = false,
-            Name = "propertyGrid",
-            RowHeadersVisible = false,
-            ScrollBars = ScrollBars.Vertical,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            ShowCellToolTips = true,
-            StandardTab = true
-        };
-        grid.ColumnHeadersHeight = 32;
-        grid.RowTemplate.Height = 32;
-        grid.DefaultCellStyle.Padding = new Padding(6, 4, 4, 4);
-        grid.DefaultCellStyle.SelectionBackColor = SystemColors.Window;
-        grid.DefaultCellStyle.SelectionForeColor = SystemColors.WindowText;
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Name",
-            HeaderText = "Name",
-            ReadOnly = true,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-            FillWeight = 58
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Value",
-            HeaderText = "Value",
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-            FillWeight = 42
-        });
-        return grid;
-    }
-
     private void ShowProperties(PathSegment? segment, int index, string unit)
     {
         if (segment == null || index < 0)
@@ -209,7 +143,7 @@ public partial class SegmentListPanel : UserControl
         }
 
         _propertiesCaption.Text = $"Properties — #{index + 1}";
-        IReadOnlyList<PropertyLine> lines = BuildLines(segment.Kind, unit);
+        IReadOnlyList<PropertyLine> lines = BuildLines(segment.Kind, unit, segment.GlueOn);
         if (!SameLines(lines))
         {
             if (_propertyGrid.IsCurrentCellInEditMode)
@@ -224,17 +158,17 @@ public partial class SegmentListPanel : UserControl
         UpdateValues(segment);
     }
 
-    private static IReadOnlyList<PropertyLine> BuildLines(SegmentKind kind, string unit)
+    private static IReadOnlyList<PropertyLine> BuildLines(SegmentKind kind, string unit, bool glueOn)
     {
         var lines = new List<PropertyLine>
         {
             new("Type", null, PropertyEditor.ReadOnlyText),
             new("Glue", SegmentPropertyField.GlueOn, PropertyEditor.Bool),
-            new("Speed mm/s", SegmentPropertyField.Speed, PropertyEditor.Number)
+            new("Z mm", SegmentPropertyField.ZDelta, PropertyEditor.Z)
         };
-        if (kind is SegmentKind.Line or SegmentKind.Arc)
+        if (kind is SegmentKind.Line or SegmentKind.Arc && glueOn)
         {
-            lines.Add(new("Width mm", SegmentPropertyField.Width, PropertyEditor.Number));
+            lines.Add(new("Width mm", SegmentPropertyField.Width, PropertyEditor.Width));
         }
         foreach (SegmentPoint point in SegmentProperties.PointsOf(kind))
         {
@@ -277,12 +211,21 @@ public partial class SegmentListPanel : UserControl
             {
                 var combo = new DataGridViewComboBoxCell
                 {
-                    DisplayStyle = DataGridViewComboBoxDisplayStyle.ComboBox,
+                    DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
                     FlatStyle = FlatStyle.Flat
                 };
                 combo.Items.Add("On");
                 combo.Items.Add("Off");
                 row.Cells[1] = combo;
+            }
+            else if (line.Editor == PropertyEditor.Width)
+            {
+                row.Cells[1] = CreateWidthCell(segment);
+            }
+            else if (line.Editor == PropertyEditor.Z)
+            {
+                row.Cells[1] = CreateZCell(segment);
+                row.Cells[0].ToolTipText = "Offset added to project Z. 0 uses the project value.";
             }
             else if (line.Editor == PropertyEditor.ReadOnlyText)
             {
@@ -311,6 +254,11 @@ public partial class SegmentListPanel : UserControl
             }
 
             string text = FormatValue(segment, line);
+            if (row.Cells[1] is DataGridViewComboBoxCell combo && !combo.Items.Contains(text))
+            {
+                combo.Items.Add(text);
+            }
+
             if (!string.Equals(row.Cells[1].Value?.ToString(), text, StringComparison.Ordinal))
             {
                 row.Cells[1].Value = text;
@@ -331,9 +279,19 @@ public partial class SegmentListPanel : UserControl
         }
 
         double number = SegmentProperties.Read(segment, field);
-        if (field == SegmentPropertyField.Width && number <= 0)
+        if (field == SegmentPropertyField.Width)
         {
-            number = _widthFloor;
+            if (number <= 0)
+            {
+                number = _widthFloor;
+            }
+
+            return StrokeWidths.Format(number);
+        }
+
+        if (field == SegmentPropertyField.ZDelta)
+        {
+            return ZOffsets.Format(number);
         }
 
         return FormatNumber(number);
@@ -400,6 +358,12 @@ public partial class SegmentListPanel : UserControl
             case PropertyEditor.Bool:
                 Commit(field, 0, string.Equals(text, "On", StringComparison.Ordinal));
                 break;
+            case PropertyEditor.Width when TryMatchWidth(text, out double width):
+                Commit(field, width, false);
+                break;
+            case PropertyEditor.Z when TryMatchZ(text, out double zOffset):
+                Commit(field, zOffset, false);
+                break;
             case PropertyEditor.Number when TryParseNumber(text, out double number):
                 Commit(field, Clamp(field, number), false);
                 break;
@@ -462,8 +426,8 @@ public partial class SegmentListPanel : UserControl
             return Math.Min(StrokeWidths.MaxMm, Math.Max(_widthFloor, value));
         }
 
-        double minimum = field == SegmentPropertyField.Speed ? 0 : (double)CoordinateMin;
-        double maximum = field == SegmentPropertyField.Speed ? (double)SpeedMax : (double)CoordinateMax;
+        double minimum = (double)CoordinateMin;
+        double maximum = (double)CoordinateMax;
         if (!double.IsFinite(value))
         {
             return minimum;
@@ -540,11 +504,13 @@ public partial class SegmentListPanel : UserControl
         if (SelectedIndex is not int index)
         {
             _moveUpButton.Enabled = false;
+            _deleteButton.Enabled = false;
             _moveDownButton.Enabled = false;
             return;
         }
 
         _moveUpButton.Enabled = PathSequenceService.CanMoveSegment(segmentCount, index, -1);
+        _deleteButton.Enabled = true;
         _moveDownButton.Enabled = PathSequenceService.CanMoveSegment(segmentCount, index, 1);
     }
 
@@ -576,93 +542,152 @@ public partial class SegmentListPanel : UserControl
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_propertiesHost == null)
+        ApplyPropertiesHeight();
+    }
+
+    private void EnsureSegmentColumns()
+    {
+        if (_segmentList.Columns.Count > 0)
         {
             return;
         }
 
-        int max = Math.Max(PropertiesMinHeight, ClientSize.Height - ListMinHeight);
-        if (_propertiesHost.Height > max)
+        _segmentList.Columns.Add("#", 36);
+        _segmentList.Columns.Add("Type", 72);
+        _segmentList.Columns.Add("Description", 180);
+        _segmentList.Columns.Add("Next gap", 84);
+        _segmentList.HideSelection = false;
+    }
+
+    private void ApplyPropertiesHeight()
+    {
+        if (_propertiesHost == null || _propertiesResizeGrip == null || ClientSize.Height <= 0)
         {
-            _propertiesHost.Height = max;
+            return;
         }
+
+        int minimum = _propertiesResizeGrip.MinHostHeight;
+        int maximum = Math.Max(minimum, ClientSize.Height - _propertiesResizeGrip.MinListHeight);
+        if (!_propertiesUserSized)
+        {
+            int preferred = (int)Math.Round(ClientSize.Height * 0.25);
+            _propertiesHost.Height = Math.Clamp(preferred, minimum, maximum);
+            return;
+        }
+
+        _propertiesHost.Height = Math.Clamp(_propertiesHost.Height, minimum, maximum);
+    }
+
+    private DataGridViewComboBoxCell CreateWidthCell(PathSegment segment)
+    {
+        double current = SegmentProperties.Read(segment, SegmentPropertyField.Width);
+        List<double> choices = StrokeWidths.DisplayList(_widthOptions, current, _widthFloor, out double selected);
+        var combo = new DataGridViewComboBoxCell
+        {
+            DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
+            FlatStyle = FlatStyle.Flat
+        };
+        foreach (double choice in choices)
+        {
+            combo.Items.Add(StrokeWidths.Format(choice));
+        }
+
+        combo.Value = StrokeWidths.Format(selected);
+        return combo;
+    }
+
+    private DataGridViewComboBoxCell CreateZCell(PathSegment segment)
+    {
+        double current = SegmentProperties.Read(segment, SegmentPropertyField.ZDelta);
+        List<double> choices = ZOffsets.DisplayList(_zOptions, current, out double selected);
+        var combo = new DataGridViewComboBoxCell
+        {
+            DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
+            FlatStyle = FlatStyle.Flat
+        };
+        foreach (double choice in choices)
+        {
+            combo.Items.Add(ZOffsets.Format(choice));
+        }
+
+        combo.Value = ZOffsets.Format(selected);
+        return combo;
+    }
+
+    private void OnPropertyEditingControlShowing(object? sender, DataGridViewEditingControlShowingEventArgs e)
+    {
+        if (e.Control is not ComboBox combo)
+        {
+            return;
+        }
+
+        int rowIndex = _propertyGrid.CurrentCell?.RowIndex ?? -1;
+        bool listOnly = rowIndex >= 0 &&
+            _propertyGrid.Rows[rowIndex].Tag is PropertyLine line &&
+            line.Editor is PropertyEditor.Width or PropertyEditor.Z or PropertyEditor.Bool;
+        combo.DropDownStyle = listOnly ? ComboBoxStyle.DropDownList : ComboBoxStyle.DropDown;
+    }
+
+    private bool TryMatchWidth(string? text, out double width)
+    {
+        if (!TryParseNumber(text, out double parsed))
+        {
+            width = 0;
+            return false;
+        }
+
+        if (_propertyGrid.CurrentCell is { RowIndex: >= 0 } cell &&
+            _propertyGrid.Rows[cell.RowIndex].Cells[1] is DataGridViewComboBoxCell combo)
+        {
+            foreach (object item in combo.Items)
+            {
+                if (TryParseNumber(item?.ToString(), out double option) &&
+                    StrokeWidths.NearlyEqual(option, parsed))
+                {
+                    width = option;
+                    return true;
+                }
+            }
+        }
+
+        width = 0;
+        return false;
+    }
+
+    private bool TryMatchZ(string? text, out double offset)
+    {
+        if (!ZOffsets.TryParse(text, out double parsed))
+        {
+            offset = 0;
+            return false;
+        }
+
+        if (_propertyGrid.CurrentCell is { RowIndex: >= 0 } cell &&
+            _propertyGrid.Rows[cell.RowIndex].Cells[1] is DataGridViewComboBoxCell combo)
+        {
+            foreach (object item in combo.Items)
+            {
+                if (ZOffsets.TryParse(item?.ToString(), out double option) &&
+                    ZOffsets.NearlyEqual(option, parsed))
+                {
+                    offset = option;
+                    return true;
+                }
+            }
+        }
+
+        offset = 0;
+        return false;
     }
 
     private enum PropertyEditor
     {
         ReadOnlyText,
         Number,
-        Bool
+        Bool,
+        Width,
+        Z
     }
 
     private readonly record struct PropertyLine(string Name, SegmentPropertyField? Field, PropertyEditor Editor);
-
-    private sealed class PropertiesResizeGrip : Control
-    {
-        private readonly Panel _host;
-        private readonly int _minHeight;
-        private readonly int _listMinHeight;
-        private bool _dragging;
-        private int _startY;
-        private int _startHeight;
-
-        public PropertiesResizeGrip(Panel host, int minHeight, int listMinHeight)
-        {
-            _host = host;
-            _minHeight = minHeight;
-            _listMinHeight = listMinHeight;
-            Height = 8;
-            Dock = DockStyle.Top;
-            Cursor = Cursors.HSplit;
-            BackColor = Color.FromArgb(220, 220, 220);
-        }
-
-        protected override void OnMouseDown(MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left && _host.Parent != null)
-            {
-                _dragging = true;
-                _startY = PointToScreen(e.Location).Y;
-                _startHeight = _host.Height;
-                Capture = true;
-            }
-
-            base.OnMouseDown(e);
-        }
-
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            if (_dragging && _host.Parent != null)
-            {
-                int delta = _startY - PointToScreen(e.Location).Y;
-                int max = Math.Max(_minHeight, _host.Parent.ClientSize.Height - _listMinHeight);
-                _host.Height = Math.Clamp(_startHeight + delta, _minHeight, max);
-            }
-
-            base.OnMouseMove(e);
-        }
-
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            if (_dragging)
-            {
-                _dragging = false;
-                Capture = false;
-            }
-
-            base.OnMouseUp(e);
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            int center = Width / 2;
-            int mid = Height / 2;
-            using var pen = new Pen(Color.FromArgb(130, 130, 130));
-            for (int x = center - 18; x <= center + 18; x += 6)
-            {
-                e.Graphics.DrawLine(pen, x, mid, x + 2, mid);
-            }
-        }
-    }
 }

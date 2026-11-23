@@ -2,7 +2,7 @@ using System.Text.Json;
 using DispensePathAuthor.Contracts;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
-using DispensePathAuthor.Xyz;
+using DispensePathAuthor.Export.Xyz;
 using Xunit;
 
 namespace DispensePathAuthor.Tests;
@@ -52,8 +52,8 @@ public class XyzExportTests
                 Y1 = 0,
                 X2 = 10,
                 Y2 = 0,
-                Dispense = true,
-                SpeedMmPerS = 40
+                Width_mm = 0.5,
+                Z_mm = 1.5
             },
             new()
             {
@@ -64,8 +64,8 @@ public class XyzExportTests
                 Y2 = -10,
                 X3 = -10,
                 Y3 = 0,
-                Dispense = true,
-                SpeedMmPerS = 20
+                Width_mm = 0.5,
+                Z_mm = 1.5
             }
         ];
         string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xyz");
@@ -82,9 +82,9 @@ public class XyzExportTests
 
             string[] lines = File.ReadAllLines(path);
             string[] motion = lines.Where(line => line.StartsWith("MOVE ", StringComparison.Ordinal)).ToArray();
-            Assert.Contains("MOVE X0.000 Y0.000 Z1.500 F40.000 V3", motion);
-            Assert.Contains("MOVE X10.000 Y0.000 Z1.500 F40.000 V3", motion);
-            Assert.Equal("MOVE X-10.000 Y0.000 Z1.500 F20.000 V3", motion[^1]);
+            Assert.Contains("MOVE X0.000 Y0.000 Z1.500 W0.500 V3", motion);
+            Assert.Contains("MOVE X10.000 Y0.000 Z1.500 W0.500 V3", motion);
+            Assert.Equal("MOVE X-10.000 Y0.000 Z1.500 W0.500 V3", motion[^1]);
             Assert.True(motion.Length > 6);
             Assert.Contains(motion, line => line.Contains("Y-9.", StringComparison.Ordinal) || line.Contains("Y-10.", StringComparison.Ordinal));
         }

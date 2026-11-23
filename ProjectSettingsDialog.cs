@@ -4,36 +4,26 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor;
 
-public sealed class ProjectSettingsDialog : Form
+public sealed partial class ProjectSettingsDialog : Form
 {
     private readonly ProcessDefaults _source;
     private readonly bool _showReference;
-    private readonly DataGridView _grid = CreateGrid();
 
     public ProcessDefaults Settings { get; private set; }
 
     public ProjectSettingsDialog(ProcessDefaults current, bool showReferenceScale)
     {
+        InitializeComponent();
         _source = current;
         _showReference = showReferenceScale;
         Settings = ProcessDefaultsCopy.Clone(current);
-
-        Text = "Project settings";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        StartPosition = FormStartPosition.CenterParent;
-        MinimizeBox = false;
-        MaximizeBox = false;
-        ShowInTaskbar = false;
-        AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(420, 360);
-        Padding = new Padding(12);
-        Font = new Font("Segoe UI", 9f);
+        _grid.DataError += (_, e) => e.ThrowException = false;
+        _okButton.Click += (_, _) => AcceptSettings();
 
         AddRow("Z mm", Format(current.Z_mm));
         AddRow("W deg", Format(current.W_deg));
         AddRow("P deg", Format(current.P_deg));
         AddRow("R deg", Format(current.R_deg));
-        AddRow("Speed mm/s", Format(current.Speed_mm_s));
         AddGlueRow(current.GlueOn);
         AddRow("Min width mm", Format(StrokeWidths.Floor(current.MinWidth_mm)));
         if (showReferenceScale)
@@ -41,35 +31,6 @@ public sealed class ProjectSettingsDialog : Form
             AddRow("Reference mm/px", FormatReference(current.ReferenceMmPerPx));
         }
 
-        var ok = new Button
-        {
-            Text = "OK",
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var cancel = new Button
-        {
-            Text = "Cancel",
-            DialogResult = DialogResult.Cancel,
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            AutoSize = true,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Padding = new Padding(0, 12, 0, 0)
-        };
-        buttons.Controls.Add(ok);
-        buttons.Controls.Add(cancel);
-        _grid.Dock = DockStyle.Fill;
-        Controls.Add(_grid);
-        Controls.Add(buttons);
-        AcceptButton = ok;
-        CancelButton = cancel;
-        ok.Click += (_, _) => AcceptSettings();
     }
 
     private void AcceptSettings()
@@ -97,8 +58,7 @@ public sealed class ProjectSettingsDialog : Form
             !TryNumber(1, -360, 360, out double w) ||
             !TryNumber(2, -360, 360, out double p) ||
             !TryNumber(3, -360, 360, out double r) ||
-            !TryNumber(4, 0, 1_000_000, out double speed) ||
-            !TryNumber(6, StrokeWidths.MinMm, StrokeWidths.MaxMm, out double minWidth))
+            !TryNumber(5, StrokeWidths.MinMm, StrokeWidths.MaxMm, out double minWidth))
         {
             return false;
         }
@@ -107,12 +67,11 @@ public sealed class ProjectSettingsDialog : Form
         settings.W_deg = w;
         settings.P_deg = p;
         settings.R_deg = r;
-        settings.Speed_mm_s = speed;
-        settings.GlueOn = string.Equals(CellText(5), "On", StringComparison.Ordinal);
+        settings.GlueOn = string.Equals(CellText(4), "On", StringComparison.Ordinal);
         settings.MinWidth_mm = StrokeWidths.Floor(minWidth);
         if (_showReference)
         {
-            if (!TryNumber(7, StrokeWidths.ReferenceMin, StrokeWidths.ReferenceMax, out double reference))
+            if (!TryNumber(6, StrokeWidths.ReferenceMin, StrokeWidths.ReferenceMax, out double reference))
             {
                 return false;
             }
@@ -161,40 +120,6 @@ public sealed class ProjectSettingsDialog : Form
         combo.Items.Add("Off");
         row.Cells[1] = combo;
         row.Cells[1].Value = glueOn ? "On" : "Off";
-    }
-
-    private static DataGridView CreateGrid()
-    {
-        var grid = new DataGridView
-        {
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            BackgroundColor = SystemColors.Window,
-            BorderStyle = BorderStyle.FixedSingle,
-            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-            MultiSelect = false,
-            RowHeadersVisible = false,
-            SelectionMode = DataGridViewSelectionMode.CellSelect
-        };
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Name",
-            HeaderText = "Name",
-            ReadOnly = true,
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-            FillWeight = 55
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Value",
-            HeaderText = "Value",
-            SortMode = DataGridViewColumnSortMode.NotSortable,
-            FillWeight = 45
-        });
-        grid.DataError += (_, e) => e.ThrowException = false;
-        return grid;
     }
 
     private static string Format(double value) =>

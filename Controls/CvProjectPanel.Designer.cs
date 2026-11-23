@@ -262,7 +262,7 @@ partial class CvProjectPanel
         _moveShapesRadio.Size = new Size(488, 36);
         _moveShapesRadio.TabIndex = 0;
         _moveShapesRadio.TabStop = true;
-        _moveShapesRadio.Text = "Move shapes with frame (keep sensor px)";
+        _moveShapesRadio.Text = "Move shapes with frame (keep image position)";
         // 
         // _frameOnlyRadio
         // 
@@ -272,7 +272,7 @@ partial class CvProjectPanel
         _frameOnlyRadio.Name = "_frameOnlyRadio";
         _frameOnlyRadio.Size = new Size(405, 36);
         _frameOnlyRadio.TabIndex = 1;
-        _frameOnlyRadio.Text = "Update frame only (keep local px)";
+        _frameOnlyRadio.Text = "Update frame only (keep local mm)";
         // 
         // _frameButtons
         // 

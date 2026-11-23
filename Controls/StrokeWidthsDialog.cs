@@ -2,111 +2,19 @@ using DispensePathAuthor.Services;
 
 namespace DispensePathAuthor.Controls;
 
-public sealed class StrokeWidthsDialog : Form
+public sealed partial class StrokeWidthsDialog : Form
 {
     private readonly double _floor;
     private readonly List<double> _widths;
-    private readonly ListBox _list = new()
-    {
-        IntegralHeight = false,
-        Dock = DockStyle.Fill
-    };
-    private readonly Button _deleteButton = new()
-    {
-        Text = "Delete",
-        AutoSize = true,
-        MinimumSize = new Size(96, 32)
-    };
-    private readonly Button _editButton = new()
-    {
-        Text = "Edit",
-        AutoSize = true,
-        MinimumSize = new Size(96, 32)
-    };
 
     public StrokeWidthsDialog(IReadOnlyList<double> widths, double minimum)
     {
+        InitializeComponent();
         _floor = StrokeWidths.Floor(minimum);
         _widths = StrokeWidths.StoredList(widths, _floor);
+        _caption.Text = $"Minimum: {StrokeWidths.Format(_floor)} mm";
 
-        Text = "Stroke widths";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        StartPosition = FormStartPosition.CenterParent;
-        MinimizeBox = false;
-        MaximizeBox = false;
-        ShowInTaskbar = false;
-        AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(380, 420);
-        Padding = new Padding(12);
-
-        var caption = new Label
-        {
-            AutoSize = true,
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Text = $"Minimum: {StrokeWidths.Format(_floor)} mm"
-        };
-        var addButton = new Button
-        {
-            Text = "Add",
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var ok = new Button
-        {
-            Text = "OK",
-            DialogResult = DialogResult.OK,
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var cancel = new Button
-        {
-            Text = "Cancel",
-            DialogResult = DialogResult.Cancel,
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var commands = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            Dock = DockStyle.Fill,
-            WrapContents = false,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        commands.Controls.Add(addButton);
-        commands.Controls.Add(_deleteButton);
-        commands.Controls.Add(_editButton);
-        var close = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        close.Controls.Add(ok);
-        close.Controls.Add(cancel);
-
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.Controls.Add(caption, 0, 0);
-        layout.Controls.Add(_list, 0, 1);
-        layout.Controls.Add(commands, 0, 2);
-        layout.Controls.Add(close, 0, 3);
-        Controls.Add(layout);
-
-        AcceptButton = ok;
-        CancelButton = cancel;
-        addButton.Click += (_, _) => AddWidth();
+        _addButton.Click += (_, _) => AddWidth();
         _deleteButton.Click += (_, _) => DeleteWidth();
         _editButton.Click += (_, _) => EditWidth();
         _list.SelectedIndexChanged += (_, _) => UpdateButtons();
@@ -241,94 +149,23 @@ public sealed class StrokeWidthsDialog : Form
     private bool TryAsk(string title, string acceptText, double current, out double width)
     {
         width = current;
-        using var dialog = new Form
+        decimal initial = Math.Round((decimal)current, 3, MidpointRounding.AwayFromZero);
+        using var dialog = new ValuePromptDialog
         {
             Text = title,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            StartPosition = FormStartPosition.CenterParent,
-            MinimizeBox = false,
-            MaximizeBox = false,
-            ShowInTaskbar = false,
-            AutoScaleMode = AutoScaleMode.Font,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Font = Font,
-            Padding = new Padding(20, 16, 20, 16)
-        };
-        var label = new Label
-        {
-            Text = "Width mm",
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 8)
-        };
-        var input = new NumericUpDown
-        {
-            DecimalPlaces = 3,
-            Increment = 0.1m,
+            AcceptText = acceptText,
+            Caption = "Width mm",
             Minimum = (decimal)_floor,
             Maximum = (decimal)StrokeWidths.MaxMm,
-            ThousandsSeparator = false,
-            TextAlign = HorizontalAlignment.Left,
-            Dock = DockStyle.Top,
-            Width = 280,
-            Margin = new Padding(0, 0, 0, 16)
+            Font = Font
         };
-        decimal initial = Math.Round((decimal)current, 3, MidpointRounding.AwayFromZero);
-        input.Value = Math.Min(input.Maximum, Math.Max(input.Minimum, initial));
-        var ok = new Button
-        {
-            Text = acceptText,
-            DialogResult = DialogResult.OK,
-            AutoSize = true,
-            MinimumSize = new Size(96, 32),
-            Margin = new Padding(8, 0, 0, 0)
-        };
-        var cancel = new Button
-        {
-            Text = "Cancel",
-            DialogResult = DialogResult.Cancel,
-            AutoSize = true,
-            MinimumSize = new Size(96, 32)
-        };
-        var buttons = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0)
-        };
-        buttons.Controls.Add(ok);
-        buttons.Controls.Add(cancel);
-        var layout = new TableLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            Dock = DockStyle.Top,
-            MinimumSize = new Size(300, 0)
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.Controls.Add(label, 0, 0);
-        layout.Controls.Add(input, 0, 1);
-        layout.Controls.Add(buttons, 0, 2);
-        dialog.Controls.Add(layout);
-        dialog.AcceptButton = ok;
-        dialog.CancelButton = cancel;
-        dialog.Shown += (_, _) =>
-        {
-            input.Focus();
-            input.Select(0, input.Text.Length);
-        };
+        dialog.Value = initial;
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return false;
         }
 
-        width = StrokeWidths.Normalize((double)input.Value);
+        width = StrokeWidths.Normalize((double)dialog.Value);
         return width >= _floor - 0.0005;
     }
 }

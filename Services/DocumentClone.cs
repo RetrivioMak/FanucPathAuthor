@@ -39,8 +39,8 @@ public static class DocumentClone
         {
             Kind = segment.Kind,
             GlueOn = segment.GlueOn,
-            Speed_mm_s = segment.Speed_mm_s,
             Width_mm = segment.Width_mm,
+            ZDelta_mm = segment.ZDelta_mm,
             X1 = segment.X1,
             Y1 = segment.Y1,
             X2 = segment.X2,

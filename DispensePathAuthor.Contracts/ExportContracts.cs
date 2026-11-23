@@ -25,9 +25,10 @@ public sealed class FrameMove
 
     public double Y3 { get; init; }
 
-    public bool Dispense { get; init; }
+    /// <summary>Bead width in millimeters. Zero means the glue is off.</summary>
+    public double Width_mm { get; init; }
 
-    public double SpeedMmPerS { get; init; }
+    public double Z_mm { get; init; }
 }
 
 public sealed class ProgramExportRequest

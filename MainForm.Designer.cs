@@ -25,13 +25,12 @@ partial class MainForm
         _savePathMenuItem = new ToolStripMenuItem();
         _savePathAsMenuItem = new ToolStripMenuItem();
         _loadCalibrationMenuItem = new ToolStripMenuItem();
-        _exportSettingsMenuItem = new ToolStripMenuItem();
         _exportCsvMenuItem = new ToolStripMenuItem();
-        _exportLsMenuItem = new ToolStripMenuItem();
         _editMenu = new ToolStripMenuItem();
         _undoMenuItem = new ToolStripMenuItem();
         _redoMenuItem = new ToolStripMenuItem();
         _cancelShapeMenuItem = new ToolStripMenuItem();
+        _segmentsMenu = new ToolStripMenuItem();
         _deleteSegmentMenuItem = new ToolStripMenuItem();
         _clearSegmentsMenuItem = new ToolStripMenuItem();
         _viewMenu = new ToolStripMenuItem();
@@ -43,6 +42,7 @@ partial class MainForm
         _showGridMenuItem = new ToolStripMenuItem();
         _gridSizeMenuItem = new ToolStripMenuItem();
         _statusStrip = new StatusStrip();
+        _calibrationWarning = new ToolStripStatusLabel();
         _statusLabel = new ToolStripStatusLabel();
         _cursorLabel = new ToolStripStatusLabel();
         _hintLabel = new ToolStripStatusLabel();
@@ -77,12 +77,8 @@ partial class MainForm
         _savePathAsMenuItem.Text = "Save project as...";
         _loadCalibrationMenuItem.Name = "loadCalibrationMenuItem";
         _loadCalibrationMenuItem.Text = "Load calibration JSON...";
-        _exportSettingsMenuItem.Name = "exportSettingsMenuItem";
-        _exportSettingsMenuItem.Text = "Export settings...";
         _exportCsvMenuItem.Name = "exportCsvMenuItem";
         _exportCsvMenuItem.Text = "Export CSV...";
-        _exportLsMenuItem.Name = "exportLsMenuItem";
-        _exportLsMenuItem.Text = "Export Fanuc .LS...";
         _fileMenu.DropDownItems.AddRange(new ToolStripItem[]
         {
             _newProjectMenuItem,
@@ -92,9 +88,7 @@ partial class MainForm
             new ToolStripSeparator(),
             _loadCalibrationMenuItem,
             new ToolStripSeparator(),
-            _exportSettingsMenuItem,
-            _exportCsvMenuItem,
-            _exportLsMenuItem
+            _exportCsvMenuItem
         });
         _fileMenu.Name = "fileMenu";
         _fileMenu.Text = "File";
@@ -107,22 +101,27 @@ partial class MainForm
         _redoMenuItem.Text = "Redo";
         _cancelShapeMenuItem.Name = "cancelShapeMenuItem";
         _cancelShapeMenuItem.Text = "Cancel shape (Esc)";
-        _deleteSegmentMenuItem.Name = "deleteSegmentMenuItem";
-        _deleteSegmentMenuItem.Text = "Delete selected segment";
-        _clearSegmentsMenuItem.Name = "clearSegmentsMenuItem";
-        _clearSegmentsMenuItem.Text = "Clear all segments";
         _editMenu.DropDownItems.AddRange(new ToolStripItem[]
         {
             _undoMenuItem,
             _redoMenuItem,
             new ToolStripSeparator(),
-            _cancelShapeMenuItem,
-            new ToolStripSeparator(),
-            _deleteSegmentMenuItem,
-            _clearSegmentsMenuItem
+            _cancelShapeMenuItem
         });
         _editMenu.Name = "editMenu";
         _editMenu.Text = "Edit";
+
+        _deleteSegmentMenuItem.Name = "deleteSegmentMenuItem";
+        _deleteSegmentMenuItem.Text = "Delete segment";
+        _clearSegmentsMenuItem.Name = "clearSegmentsMenuItem";
+        _clearSegmentsMenuItem.Text = "Delete all";
+        _segmentsMenu.DropDownItems.AddRange(new ToolStripItem[]
+        {
+            _deleteSegmentMenuItem,
+            _clearSegmentsMenuItem
+        });
+        _segmentsMenu.Name = "segmentsMenu";
+        _segmentsMenu.Text = "Segments";
 
         _fitViewMenuItem.Name = "fitViewMenuItem";
         _fitViewMenuItem.Text = "Fit view";
@@ -156,20 +155,25 @@ partial class MainForm
         _viewMenu.Name = "viewMenu";
         _viewMenu.Text = "View";
 
-        _menuStrip.Items.AddRange(new ToolStripItem[] { _fileMenu, _editMenu, _viewMenu });
+        _menuStrip.Items.AddRange(new ToolStripItem[] { _fileMenu, _editMenu, _viewMenu, _segmentsMenu });
         _menuStrip.Dock = DockStyle.Top;
         _menuStrip.Name = "menuStrip";
 
+        _calibrationWarning.ForeColor = Color.Firebrick;
+        _calibrationWarning.Margin = new Padding(6, 3, 16, 2);
+        _calibrationWarning.Name = "calibrationWarning";
+        _calibrationWarning.Text = "Calibration not loaded";
+        _calibrationWarning.Visible = false;
         _statusLabel.Name = "statusLabel";
         _statusLabel.Spring = true;
         _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
         _cursorLabel.AutoSize = false;
         _cursorLabel.Name = "cursorLabel";
         _cursorLabel.TextAlign = ContentAlignment.MiddleLeft;
-        _cursorLabel.Width = 420;
+        _cursorLabel.Width = 560;
         _hintLabel.Name = "hintLabel";
         _hintLabel.Text = "Wheel: zoom | Right-drag empty space: pan | Esc: cancel";
-        _statusStrip.Items.AddRange(new ToolStripItem[] { _statusLabel, _cursorLabel, _hintLabel });
+        _statusStrip.Items.AddRange(new ToolStripItem[] { _calibrationWarning, _statusLabel, _cursorLabel, _hintLabel });
         _statusStrip.Dock = DockStyle.Bottom;
         _statusStrip.Name = "statusStrip";
 
@@ -262,13 +266,12 @@ partial class MainForm
     private ToolStripMenuItem _savePathMenuItem = null!;
     private ToolStripMenuItem _savePathAsMenuItem = null!;
     private ToolStripMenuItem _loadCalibrationMenuItem = null!;
-    private ToolStripMenuItem _exportSettingsMenuItem = null!;
     private ToolStripMenuItem _exportCsvMenuItem = null!;
-    private ToolStripMenuItem _exportLsMenuItem = null!;
     private ToolStripMenuItem _editMenu = null!;
     private ToolStripMenuItem _undoMenuItem = null!;
     private ToolStripMenuItem _redoMenuItem = null!;
     private ToolStripMenuItem _cancelShapeMenuItem = null!;
+    private ToolStripMenuItem _segmentsMenu = null!;
     private ToolStripMenuItem _deleteSegmentMenuItem = null!;
     private ToolStripMenuItem _clearSegmentsMenuItem = null!;
     private ToolStripMenuItem _viewMenu = null!;
@@ -280,6 +283,7 @@ partial class MainForm
     private ToolStripMenuItem _showGridMenuItem = null!;
     private ToolStripMenuItem _gridSizeMenuItem = null!;
     private StatusStrip _statusStrip = null!;
+    private ToolStripStatusLabel _calibrationWarning = null!;
     private ToolStripStatusLabel _statusLabel = null!;
     private ToolStripStatusLabel _cursorLabel = null!;
     private ToolStripStatusLabel _hintLabel = null!;

@@ -40,6 +40,18 @@ public class StrokeWidthTests
     }
 
     [Fact]
+    public void ExportWidth_IsZeroWhenGlueIsOff()
+    {
+        var off = new PathSegment { Kind = SegmentKind.Line, GlueOn = false, Width_mm = 0.4 };
+        var on = new PathSegment { Kind = SegmentKind.Line, GlueOn = true, Width_mm = 0.4 };
+        var dot = new PathSegment { Kind = SegmentKind.Dot, GlueOn = true };
+
+        Assert.Equal(0, StrokeWidths.ExportWidth(off, 0.1));
+        Assert.Equal(0.4, StrokeWidths.ExportWidth(on, 0.1));
+        Assert.Equal(0.1, StrokeWidths.ExportWidth(dot, 0.1));
+    }
+
+    [Fact]
     public void ScreenPixels_FollowZoomAndClampToOnePixel()
     {
         Assert.Equal(10f, StrokeWidths.ScreenPixels(1, 0.1, 1f));

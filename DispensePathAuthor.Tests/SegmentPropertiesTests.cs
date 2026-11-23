@@ -40,8 +40,7 @@ public class SegmentPropertiesTests
             Y1 = 2,
             X2 = 3,
             Y2 = 4,
-            GlueOn = true,
-            Speed_mm_s = 50
+            GlueOn = true
         };
 
         Assert.True(SegmentProperties.WouldChange(segment, SegmentPropertyField.X2, 8, false));
@@ -53,27 +52,23 @@ public class SegmentPropertiesTests
         Assert.Equal(8, segment.X2);
         Assert.Equal(4, segment.Y2);
         Assert.True(segment.GlueOn);
-        Assert.Equal(50, segment.Speed_mm_s);
     }
 
     [Fact]
-    public void Apply_GlueAndSpeed_LeaveGeometryAndType()
+    public void Apply_Glue_LeavesGeometryAndType()
     {
         var segment = new PathSegment
         {
             Kind = SegmentKind.Dot,
             X1 = 1.5,
             Y1 = -2,
-            GlueOn = true,
-            Speed_mm_s = 10
+            GlueOn = true
         };
 
         SegmentProperties.Apply(segment, SegmentPropertyField.GlueOn, 0, false);
-        SegmentProperties.Apply(segment, SegmentPropertyField.Speed, 25, false);
 
         Assert.Equal(SegmentKind.Dot, segment.Kind);
         Assert.False(segment.GlueOn);
-        Assert.Equal(25, segment.Speed_mm_s);
         Assert.Equal(1.5, segment.X1);
         Assert.Equal(-2, segment.Y1);
     }

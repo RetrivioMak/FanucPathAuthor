@@ -63,7 +63,7 @@ public class ShapeExpanderTests
     [Fact]
     public void RectangleToLines_CreatesFourSegments()
     {
-        IReadOnlyList<PathSegment> lines = ShapeExpander.RectangleToLines(0, 0, 100, 50, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> lines = ShapeExpander.RectangleToLines(0, 0, 100, 50, glueOn: true);
         Assert.Equal(4, lines.Count);
         Assert.All(lines, line => Assert.Equal(SegmentKind.Line, line.Kind));
     }
@@ -71,7 +71,7 @@ public class ShapeExpanderTests
     [Fact]
     public void RectangleToLines_CornersAreClosedLoop()
     {
-        IReadOnlyList<PathSegment> lines = ShapeExpander.RectangleToLines(10, 20, 110, 70, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> lines = ShapeExpander.RectangleToLines(10, 20, 110, 70, glueOn: true);
         Assert.Equal(lines[0].X1, lines[3].X2, 3);
         Assert.Equal(lines[0].Y1, lines[3].Y2, 3);
         Assert.Equal(lines[0].X2, lines[1].X1, 3);
@@ -81,7 +81,7 @@ public class ShapeExpanderTests
     [Fact]
     public void CircleToArcs_CreatesTwoSemicircleSegments()
     {
-        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(50, 50, 100, 50, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(50, 50, 100, 50, glueOn: true);
         Assert.Equal(2, arcs.Count);
         Assert.All(arcs, arc => Assert.Equal(SegmentKind.Arc, arc.Kind));
     }
@@ -89,7 +89,7 @@ public class ShapeExpanderTests
     [Fact]
     public void CircleToArcs_FormsClosedLoop()
     {
-        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(0, 0, 50, 0, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(0, 0, 50, 0, glueOn: true);
         Assert.Equal(arcs[0].X1, arcs[1].X3, 3);
         Assert.Equal(arcs[0].Y1, arcs[1].Y3, 3);
         Assert.Equal(arcs[0].X3, arcs[1].X1, 3);
@@ -102,7 +102,7 @@ public class PointEditHelperTests
     [Fact]
     public void TryParseCirclePair_DetectsCircleFromTwoArcs()
     {
-        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(50, 50, 100, 50, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(50, 50, 100, 50, glueOn: true);
         Assert.True(PointEditHelper.TryParseCirclePair(arcs[0], arcs[1], out double cx, out double cy, out double radius));
         Assert.Equal(50, cx, 1);
         Assert.Equal(50, cy, 1);
@@ -113,7 +113,7 @@ public class PointEditHelperTests
     public void TryPickVertex_FindsSharedRectangleCorner()
     {
         var document = new PathDocument();
-        document.Segments.AddRange(ShapeExpander.RectangleToLines(0, 0, 100, 50, glueOn: true, speed_mm_s: 40));
+        document.Segments.AddRange(ShapeExpander.RectangleToLines(0, 0, 100, 50, glueOn: true));
         var (sensorX, sensorY) = CoordinateTransform.LocalToSensor(0, 0, document.Frame);
 
         Assert.True(PointEditHelper.TryPickVertex(
@@ -132,7 +132,7 @@ public class PointEditHelperTests
     [Fact]
     public void ResizeCircle_ChangesRadius()
     {
-        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(0, 0, 50, 0, glueOn: true, speed_mm_s: 40);
+        IReadOnlyList<PathSegment> arcs = ShapeExpander.CircleToArcs(0, 0, 50, 0, glueOn: true);
         var document = new PathDocument();
         document.Segments.AddRange(arcs);
 
@@ -1021,8 +1021,8 @@ public class PathSimulationServiceTests
         {
             Segments =
             {
-                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = true, Speed_mm_s = 50 },
-                new PathSegment { Kind = SegmentKind.Line, X1 = 20, Y1 = 0, X2 = 30, Y2 = 0, GlueOn = true, Speed_mm_s = 50 }
+                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = true },
+                new PathSegment { Kind = SegmentKind.Line, X1 = 20, Y1 = 0, X2 = 30, Y2 = 0, GlueOn = true }
             }
         };
 
@@ -1038,7 +1038,7 @@ public class PathSimulationServiceTests
         {
             Segments =
             {
-                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = false, Speed_mm_s = 40 }
+                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = false }
             }
         };
 
@@ -1056,7 +1056,7 @@ public class PathSimulationServiceTests
         {
             Segments =
             {
-                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = true, Speed_mm_s = 10 }
+                new PathSegment { Kind = SegmentKind.Line, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, GlueOn = true }
             }
         };
 

@@ -74,11 +74,12 @@ public sealed class ProcessDefaults
 
     public static readonly double[] DefaultWidthsMm = { 0.2, 0.3, 0.5, 0.8, 1, 1.5, 2, 3, 5 };
 
+    public static readonly double[] DefaultZDeltasMm = { -1, -0.5, 0, 0.5, 1 };
+
     public double Z_mm { get; set; } = 0;
     public double W_deg { get; set; } = 0;
     public double P_deg { get; set; } = 0;
     public double R_deg { get; set; } = 0;
-    public double Speed_mm_s { get; set; } = 50;
     public bool GlueOn { get; set; } = true;
 
     /// <summary>Smallest stroke offered for new lines and arcs.</summary>
@@ -88,16 +89,21 @@ public sealed class ProcessDefaults
     public double ReferenceMmPerPx { get; set; } = DefaultReferenceMmPerPx;
 
     public List<double> Widths_mm { get; set; } = new(DefaultWidthsMm);
+
+    /// <summary>Segment Z offsets offered in the Z lists. Zero is always kept.</summary>
+    public List<double> ZDeltas_mm { get; set; } = new(DefaultZDeltasMm);
 }
 
 public sealed class PathSegment
 {
     public SegmentKind Kind { get; set; }
     public bool GlueOn { get; set; } = true;
-    public double Speed_mm_s { get; set; } = 50;
 
     /// <summary>Bead width in millimeters. Dots do not use it. Zero means the project minimum.</summary>
     public double Width_mm { get; set; }
+
+    /// <summary>Offset added to project Z. Zero exports the project Z unchanged.</summary>
+    public double ZDelta_mm { get; set; }
 
     // Teach, and CV from schema 6: millimeters along the project frame.
     // Older CV documents: frame-local pixels, migrated when calibration is known.
