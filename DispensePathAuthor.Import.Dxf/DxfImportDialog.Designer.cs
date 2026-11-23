@@ -3,7 +3,7 @@ namespace DispensePathAuthor.Import.Dxf;
 
 partial class DxfImportDialog
 {
-    private System.ComponentModel.IContainer? components;
+    private System.ComponentModel.IContainer? components = null;
 
     protected override void Dispose(bool disposing)
     {
