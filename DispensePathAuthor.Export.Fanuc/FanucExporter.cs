@@ -34,6 +34,13 @@ public static class FanucExporter
 
         string uf = userFrame.ToString(CultureInfo.InvariantCulture);
         string ut = userTool.ToString(CultureInfo.InvariantCulture);
+        // eVision local +Y is clockwise from +X. Fanuc UF +Y is counterclockwise.
+        // Reflect only that Y axis about the frame origin; leave X, R, and UF as computed.
+        // A collinear path does not define Y, so its positions are written unchanged.
+        (double X, double Y)[]? frameInverted = applyFrameYReflection
+            ? InvertFrameY(exportWaypoints)
+            : null;
+        IReadOnlyList<LsMotion> motions = BuildMotions(exportWaypoints, frameInverted);
 
         var sb = new StringBuilder();
         sb.AppendLine($"/PROG  {SanitizeProgramName(programName)}");
@@ -58,31 +65,34 @@ public static class FanucExporter
             sb.AppendLine($"   {lineNo++}:  ! {processNote} ;");
         }
 
-        for (int i = 0; i < exportWaypoints.Count; i++)
+        for (int i = 0; i < motions.Count; i++)
         {
-            FanucExportPoint wp = exportWaypoints[i];
-            double speed = speedMmPerSec?.Invoke(wp, i) ?? DefaultLsSpeed_mm_s;
+            LsMotion motion = motions[i];
+            FanucExportPoint target = motion.Target;
+            double speed = speedMmPerSec?.Invoke(target, motion.SpeedIndex) ?? DefaultLsSpeed_mm_s;
             if (!double.IsFinite(speed) || speed <= 0)
             {
-                throw new InvalidOperationException($"Point P[{wp.Index}] has no positive feed speed.");
+                throw new InvalidOperationException($"Point P[{target.Index}] has no positive feed speed.");
             }
 
             string lsSpeed = $"{Format(speed)}mm/sec";
-            string motion = i == exportWaypoints.Count - 1 ? "FINE" : "CNT100";
+            string termination = i == motions.Count - 1 ? "FINE" : "CNT100";
             string comment = speedMmPerSec == null
-                ? $"! Width={Format(wp.Width_mm)} Z={Format(wp.Z_mm)} ;"
-                : $"! Width={Format(wp.Width_mm)} Z={Format(wp.Z_mm)} Speed={Format(speed)} ;";
+                ? $"! Width={Format(target.Width_mm)} Z={Format(target.Z_mm)} ;"
+                : $"! Width={Format(target.Width_mm)} Z={Format(target.Z_mm)} Speed={Format(speed)} ;";
             sb.AppendLine($"   {lineNo++}:  {comment}");
-            sb.AppendLine($"   {lineNo++}:L P[{wp.Index}] {lsSpeed} {motion}    ;");
+            if (motion.Via is FanucExportPoint via)
+            {
+                sb.AppendLine($"   {lineNo++}:C P[{via.Index}]");
+                sb.AppendLine($"    :  P[{target.Index}] {lsSpeed} {termination}    ;");
+            }
+            else
+            {
+                sb.AppendLine($"   {lineNo++}:L P[{target.Index}] {lsSpeed} {termination}    ;");
+            }
         }
 
         sb.AppendLine("/POS");
-        // eVision local +Y is clockwise from +X. Fanuc UF +Y is counterclockwise.
-        // Reflect only that Y axis about the frame origin; leave X, R, and UF as computed.
-        // A collinear path does not define Y, so its positions are written unchanged.
-        (double X, double Y)[]? frameInverted = applyFrameYReflection
-            ? InvertFrameY(exportWaypoints)
-            : null;
         for (int i = 0; i < exportWaypoints.Count; i++)
         {
             FanucExportPoint wp = exportWaypoints[i];
@@ -233,6 +243,90 @@ public static class FanucExporter
 
         return inverted;
     }
+
+    /// <summary>
+    /// Point and line are linear. An arc is one circular move: the robot is already at the start,
+    /// passes through the mid point, and stops at the end. A start that repeats the current pose is not a move.
+    /// </summary>
+    private static List<LsMotion> BuildMotions(
+        IReadOnlyList<FanucExportPoint> waypoints,
+        (double X, double Y)[]? frameInverted)
+    {
+        var motions = new List<LsMotion>();
+        WrittenPose? pose = null;
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            FanucExportPoint point = waypoints[i];
+            if (IsRole(point, "mid") &&
+                i + 1 < waypoints.Count &&
+                IsRole(waypoints[i + 1], "end"))
+            {
+                FanucExportPoint end = waypoints[i + 1];
+                if (pose == null)
+                {
+                    motions.Add(LsMotion.Linear(point, i));
+                    pose = Written(point, i, frameInverted);
+                    motions.Add(LsMotion.Linear(end, i + 1));
+                    pose = Written(end, i + 1, frameInverted);
+                }
+                else
+                {
+                    motions.Add(LsMotion.Circular(point, end, i + 1));
+                    pose = Written(end, i + 1, frameInverted);
+                }
+
+                i++;
+                continue;
+            }
+
+            WrittenPose written = Written(point, i, frameInverted);
+            if (IsRole(point, "start") && pose is WrittenPose current && SamePose(current, written))
+            {
+                continue;
+            }
+
+            motions.Add(LsMotion.Linear(point, i));
+            pose = written;
+        }
+
+        return motions;
+    }
+
+    private static WrittenPose Written(
+        FanucExportPoint point,
+        int index,
+        (double X, double Y)[]? frameInverted)
+    {
+        double x = point.ExportX_mm;
+        double y = point.ExportY_mm;
+        if (frameInverted != null)
+        {
+            x = frameInverted[index].X;
+            y = frameInverted[index].Y;
+        }
+
+        return new WrittenPose(x, y, point.Z_mm, point.ExportR_deg);
+    }
+
+    private static bool SamePose(WrittenPose left, WrittenPose right) =>
+        Format(left.X) == Format(right.X) &&
+        Format(left.Y) == Format(right.Y) &&
+        Format(left.Z) == Format(right.Z) &&
+        Format(left.R) == Format(right.R);
+
+    private static bool IsRole(FanucExportPoint point, string role) =>
+        point.Role.Equals(role, StringComparison.OrdinalIgnoreCase);
+
+    private readonly record struct LsMotion(FanucExportPoint Target, int SpeedIndex, FanucExportPoint? Via)
+    {
+        public static LsMotion Linear(FanucExportPoint target, int speedIndex) =>
+            new(target, speedIndex, null);
+
+        public static LsMotion Circular(FanucExportPoint via, FanucExportPoint end, int speedIndex) =>
+            new(end, speedIndex, via);
+    }
+
+    private readonly record struct WrittenPose(double X, double Y, double Z, double R);
 
     private static IReadOnlyList<FanucExportPoint> FilterExportWaypoints(IReadOnlyList<FanucExportPoint> waypoints) =>
         waypoints.Where(static wp => !wp.IsPreviewOnly).ToList();

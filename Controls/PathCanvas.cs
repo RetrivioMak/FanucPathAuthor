@@ -493,7 +493,9 @@ public sealed class PathCanvas : Control
             InvertY = Document.Frame.InvertY
         };
 
-        if (moveShapesWithFrame)
+        // Move shapes with the frame keeps stored coordinates, so the path follows the new origin.
+        // Update frame only rewrites those coordinates and leaves the path on the same image pixels.
+        if (!moveShapesWithFrame)
         {
             RebindStoredPath(oldFrame, newFrame);
         }

@@ -1366,8 +1366,8 @@ public partial class MainForm : Form
         UpdateUndoMenuState();
         RefreshTileList();
         _statusLabel.Text = moveShapes
-            ? "Frame applied — shapes stayed on the image"
-            : "Frame applied — local mm unchanged";
+            ? "Frame applied — local mm unchanged"
+            : "Frame applied — shapes stayed on the image";
     }
 
     private void CancelFrameEdit()
