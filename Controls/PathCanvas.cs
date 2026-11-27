@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DispensePathAuthor.Models;
 using DispensePathAuthor.Services;
 
@@ -325,6 +326,21 @@ public sealed class PathCanvas : Control
         Document.Defaults = copy;
         RaiseDocumentChanged();
         Invalidate();
+    }
+
+    public void SetExporterSection(string id, JsonElement section)
+    {
+        JsonElement current = Document.Exporters.Section(id);
+        if (current.ValueKind != JsonValueKind.Undefined &&
+            section.ValueKind != JsonValueKind.Undefined &&
+            current.GetRawText() == section.GetRawText())
+        {
+            return;
+        }
+
+        CommitUndoSnapshot();
+        Document.Exporters.SetSection(id, section);
+        RaiseDocumentChanged();
     }
 
     public void SetWidthSteps(IReadOnlyList<double> steps)

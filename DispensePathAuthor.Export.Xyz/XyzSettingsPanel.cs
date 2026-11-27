@@ -4,21 +4,19 @@ using DispensePathAuthor.Contracts;
 
 namespace DispensePathAuthor.Export.Xyz;
 
-public partial class XyzSettingsPanel : UserControl, IExporterSettingsPage
+public sealed partial class XyzSettingsPanel : Form, IExporterSettingsPage
 {
     public XyzSettingsPanel()
     {
         InitializeComponent();
-        _zHeight.Value = 0;
-        _valveOutput.Value = 1;
-        _chordTolerance.Value = 0.2m;
     }
 
     public void LoadSection(JsonElement section)
     {
         XyzSettings settings = XyzSettings.Read(section);
         _zHeight.Value = Clamp(_zHeight, (decimal)settings.Z_mm);
-        _valveOutput.Value = Clamp(_valveOutput, settings.ValveOutput);
+        _valveOutput.Value = Clamp(_valveOutput, (decimal)settings.ValveOutput);
+        _pointSpacing.Value = Clamp(_pointSpacing, (decimal)settings.PointSpacing_mm);
         _chordTolerance.Value = Clamp(_chordTolerance, (decimal)settings.ChordTolerance_mm);
     }
 
@@ -28,6 +26,7 @@ public partial class XyzSettingsPanel : UserControl, IExporterSettingsPage
         {
             ["z_mm"] = (double)_zHeight.Value,
             ["valveOutput"] = (int)_valveOutput.Value,
+            ["pointSpacing_mm"] = (double)_pointSpacing.Value,
             ["chordTolerance_mm"] = (double)_chordTolerance.Value
         };
         return JsonSerializer.Deserialize<JsonElement>(section.ToJsonString());

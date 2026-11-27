@@ -11,4 +11,16 @@
   <ItemGroup>
     <ProjectReference Include="..\DispensePathAuthor.Contracts\DispensePathAuthor.Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="XyzSettingsPanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="XyzSettingsPanel.Designer.cs">
+      <DependentUpon>XyzSettingsPanel.cs</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="XyzSettingsPanel.resx">
+      <DependentUpon>XyzSettingsPanel.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

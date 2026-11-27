@@ -27,7 +27,7 @@ public class XyzExportTests
         });
         document.Exporters.SetSection(
             "xyz",
-            JsonSerializer.Deserialize<JsonElement>("""{"z_mm":1.25,"valveOutput":4,"chordTolerance_mm":0.2}"""));
+            JsonSerializer.Deserialize<JsonElement>("""{"z_mm":1.25,"valveOutput":4,"chordTolerance_mm":0.2,"pointSpacing_mm":0.5}"""));
 
         PathDocument loaded = PathSerializer.LoadFromJson(PathSerializer.ToJson(document));
 
@@ -36,13 +36,14 @@ public class XyzExportTests
         Assert.Equal(8, loaded.Segments[0].X2, 6);
         Assert.Equal(1.25, loaded.Exporters.Section("xyz").GetProperty("z_mm").GetDouble(), 6);
         Assert.Equal(4, loaded.Exporters.Section("xyz").GetProperty("valveOutput").GetInt32());
+        Assert.Equal(0.5, loaded.Exporters.Section("xyz").GetProperty("pointSpacing_mm").GetDouble(), 6);
         Assert.Equal(ExportCoordinateMode.OffsetFromCalibrationRef, loaded.Exporters.FanucLs.CoordinateMode);
     }
 
     [Fact]
     public void Export_WritesConstantZAndSplitsTheArc()
     {
-        JsonElement settings = JsonSerializer.Deserialize<JsonElement>("""{"z_mm":1.5,"valveOutput":3,"chordTolerance_mm":0.5}""");
+        JsonElement settings = JsonSerializer.Deserialize<JsonElement>("""{"z_mm":1.5,"valveOutput":3,"chordTolerance_mm":0.5,"pointSpacing_mm":10}""");
         FrameMove[] moves =
         [
             new()
@@ -87,6 +88,51 @@ public class XyzExportTests
             Assert.Equal("MOVE X-10.000 Y0.000 Z1.500 W0.500 V3", motion[^1]);
             Assert.True(motion.Length > 6);
             Assert.Contains(motion, line => line.Contains("Y-9.", StringComparison.Ordinal) || line.Contains("Y-10.", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Export_PointSpacingShortensTheArcStep()
+    {
+        FrameMove[] moves =
+        [
+            new()
+            {
+                Kind = FrameMoveKind.Arc,
+                X1 = 15,
+                Y1 = -5,
+                X2 = 10,
+                Y2 = 0,
+                X3 = 5,
+                Y3 = -5,
+                Width_mm = 0.1,
+                Z_mm = 0
+            }
+        ];
+
+        int coarse = CountMoves("""{"chordTolerance_mm":0.2,"pointSpacing_mm":2}""", moves);
+        int fine = CountMoves("""{"chordTolerance_mm":0.2,"pointSpacing_mm":0.5}""", moves);
+
+        Assert.InRange(coarse, 8, 12);
+        Assert.True(fine > 30);
+    }
+
+    private static int CountMoves(string settingsJson, FrameMove[] moves)
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xyz");
+        try
+        {
+            new XyzExporter().Export(new ProgramExportRequest
+            {
+                Moves = moves,
+                Settings = JsonSerializer.Deserialize<JsonElement>(settingsJson),
+                DestinationPath = path
+            });
+            return File.ReadAllLines(path).Count(line => line.StartsWith("MOVE ", StringComparison.Ordinal));
         }
         finally
         {

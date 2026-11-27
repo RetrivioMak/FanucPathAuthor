@@ -65,7 +65,7 @@ public interface IProgramExporter
 
     IReadOnlyList<string> RequiredChannels { get; }
 
-    UserControl? CreateSettingsPage();
+    Control? CreateSettingsPage();
 
     string? Validate(ProgramExportRequest request);
 

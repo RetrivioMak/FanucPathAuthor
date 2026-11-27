@@ -18,7 +18,7 @@ public sealed class FanucFeedExporter : IInteractiveProgramExporter
 
     public IReadOnlyList<string> RequiredChannels { get; } = ["X", "Y"];
 
-    public UserControl? CreateSettingsPage() => null;
+    public Control? CreateSettingsPage() => null;
 
     public string? Validate(ProgramExportRequest request) => null;
 

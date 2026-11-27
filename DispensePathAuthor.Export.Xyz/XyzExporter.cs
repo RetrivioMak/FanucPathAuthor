@@ -21,7 +21,7 @@ public sealed class XyzExporter : IProgramExporter
 
     public IReadOnlyList<string> RequiredChannels { get; } = ["X", "Y", "Z"];
 
-    public UserControl? CreateSettingsPage() => new XyzSettingsPanel();
+    public Control? CreateSettingsPage() => new XyzSettingsPanel();
 
     public string? Validate(ProgramExportRequest request)
     {
@@ -53,9 +53,10 @@ public sealed class XyzExporter : IProgramExporter
         output.AppendLine();
         output.AppendLine(string.Create(CultureInfo.InvariantCulture, $"; z_mm {settings.Z_mm:0.000}"));
         output.AppendLine(string.Create(CultureInfo.InvariantCulture, $"; valve {settings.ValveOutput}"));
+        output.AppendLine(string.Create(CultureInfo.InvariantCulture, $"; point_spacing_mm {settings.PointSpacing_mm:0.000}"));
         foreach (FrameMove move in request.Moves)
         {
-            foreach ((double x, double y) in Sample(move, settings.ChordTolerance_mm))
+            foreach ((double x, double y) in Sample(move, settings))
             {
                 int valve = move.Width_mm > 0 ? settings.ValveOutput : 0;
                 output.AppendLine(string.Create(
@@ -67,18 +68,18 @@ public sealed class XyzExporter : IProgramExporter
         File.WriteAllText(request.DestinationPath, output.ToString());
     }
 
-    internal static IReadOnlyList<(double X, double Y)> Sample(FrameMove move, double chordToleranceMm)
+    internal static IReadOnlyList<(double X, double Y)> Sample(FrameMove move, XyzSettings settings)
     {
         return move.Kind switch
         {
             FrameMoveKind.Dot => [(move.X1, move.Y1)],
             FrameMoveKind.Line => [(move.X1, move.Y1), (move.X2, move.Y2)],
-            FrameMoveKind.Arc => SampleArc(move, chordToleranceMm),
+            FrameMoveKind.Arc => SampleArc(move, settings),
             _ => []
         };
     }
 
-    private static IReadOnlyList<(double X, double Y)> SampleArc(FrameMove move, double chordToleranceMm)
+    private static IReadOnlyList<(double X, double Y)> SampleArc(FrameMove move, XyzSettings settings)
     {
         if (!TryCircle(
                 move.X1,
@@ -98,7 +99,7 @@ public sealed class XyzExporter : IProgramExporter
         double mid = Math.Atan2(move.Y2 - centerY, move.X2 - centerX);
         double end = Math.Atan2(move.Y3 - centerY, move.X3 - centerX);
         double sweep = SweepThroughMid(start, mid, end);
-        double step = ChordStep(radius, Math.Max(chordToleranceMm, 1e-4));
+        double step = AngleStep(radius, settings);
         int steps = (int)Math.Clamp(Math.Ceiling(Math.Abs(sweep) / step), 2, 2000);
         var points = new List<(double X, double Y)>(steps + 1);
         for (int i = 0; i <= steps; i++)
@@ -110,6 +111,17 @@ public sealed class XyzExporter : IProgramExporter
         points[0] = (move.X1, move.Y1);
         points[^1] = (move.X3, move.Y3);
         return points;
+    }
+
+    private static double AngleStep(double radius, XyzSettings settings)
+    {
+        double step = ChordStep(radius, Math.Max(settings.ChordTolerance_mm, 1e-4));
+        if (settings.PointSpacing_mm > 0)
+        {
+            step = Math.Min(step, settings.PointSpacing_mm / radius);
+        }
+
+        return step;
     }
 
     private static double ChordStep(double radius, double tolerance)
@@ -185,11 +197,15 @@ public sealed class XyzSettings
 
     public double ChordTolerance_mm { get; init; } = 0.2;
 
+    /// <summary>Longest distance along an arc between two written points, in millimeters.</summary>
+    public double PointSpacing_mm { get; init; } = 0.5;
+
     public static XyzSettings Read(JsonElement section)
     {
         double z = 0;
         int valve = 1;
         double chord = 0.2;
+        double spacing = 0.5;
         if (section.ValueKind == JsonValueKind.Object)
         {
             if (section.TryGetProperty("z_mm", out JsonElement zElement) && zElement.TryGetDouble(out double zValue))
@@ -208,13 +224,21 @@ public sealed class XyzSettings
             {
                 chord = chordValue;
             }
+
+            if (section.TryGetProperty("pointSpacing_mm", out JsonElement spacingElement) &&
+                spacingElement.TryGetDouble(out double spacingValue) &&
+                spacingValue > 0)
+            {
+                spacing = spacingValue;
+            }
         }
 
         return new XyzSettings
         {
             Z_mm = z,
             ValveOutput = valve,
-            ChordTolerance_mm = chord
+            ChordTolerance_mm = chord,
+            PointSpacing_mm = spacing
         };
     }
 }

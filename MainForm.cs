@@ -792,6 +792,11 @@ public partial class MainForm : Form
             return;
         }
 
+        if (!ConfirmExporterSettings(exporter))
+        {
+            return;
+        }
+
         using var dialog = new SaveFileDialog
         {
             Filter = exporter.FileFilter,
@@ -810,6 +815,34 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, exporter.MenuLabel, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private bool ConfirmExporterSettings(IProgramExporter exporter)
+    {
+        Control? page = exporter.CreateSettingsPage();
+        if (page == null)
+        {
+            return true;
+        }
+
+        if (page is not Form dialog || page is not IExporterSettingsPage settingsPage)
+        {
+            page.Dispose();
+            return true;
+        }
+
+        settingsPage.LoadSection(_canvas.Document.Exporters.Section(exporter.Id));
+        dialog.Icon = Icon;
+        using (dialog)
+        {
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return false;
+            }
+
+            _canvas.SetExporterSection(exporter.Id, settingsPage.SaveSection());
+            return true;
         }
     }
 
